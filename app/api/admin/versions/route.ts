@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAdmin } from "@/lib/session";
 import { createVersion } from "@/lib/db";
+import { cleanLinks, firstLink } from "@/lib/providers";
 
 // Persists a version's metadata after its APK has been uploaded (to Blob in
 // production, or to public/uploads in dev).
@@ -17,10 +18,17 @@ export async function POST(req: NextRequest) {
   }
 
   const version = String(body.version ?? "").trim();
-  const apk_url = String(body.apk_url ?? "").trim();
-  if (!version || !apk_url) {
+  const links = cleanLinks(body.links);
+  // apk_url is the "primary" link: an uploaded file's URL, else the first
+  // provider link. It powers the /api/download redirect + size lookup.
+  const apk_url = String(body.apk_url ?? "").trim() || firstLink(links);
+
+  if (!version) {
+    return NextResponse.json({ error: "Enter a version number." }, { status: 400 });
+  }
+  if (!apk_url) {
     return NextResponse.json(
-      { error: "version and apk_url are required" },
+      { error: "Add at least one download link." },
       { status: 400 }
     );
   }
@@ -44,6 +52,7 @@ export async function POST(req: NextRequest) {
     size_bytes,
     apk_url,
     apk_pathname: body.apk_pathname ? String(body.apk_pathname) : null,
+    links,
   });
 
   return NextResponse.json({ version: created });

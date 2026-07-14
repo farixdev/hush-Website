@@ -1,7 +1,7 @@
-import { Download } from "lucide-react";
 import type { Version } from "@/lib/db";
 import { formatBytes, formatDate } from "@/lib/format";
 import Reveal from "./Reveal";
+import ProviderLinks from "./ProviderLinks";
 
 export default function VersionList({ versions }: { versions: Version[] }) {
   if (versions.length === 0) {
@@ -26,13 +26,7 @@ export default function VersionList({ versions }: { versions: Version[] }) {
                   </span>
                 )}
               </div>
-              <a
-                href={`/api/download/${v.id}`}
-                className="inline-flex items-center gap-2 rounded-full border border-white/20 px-4 py-2 text-sm font-semibold transition-colors hover:bg-white hover:text-black"
-              >
-                <Download size={15} />
-                APK
-              </a>
+              <ProviderLinks version={v} />
             </div>
 
             <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1 text-xs text-white/40">

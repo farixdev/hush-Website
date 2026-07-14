@@ -14,7 +14,9 @@ import {
   Link2,
 } from "lucide-react";
 import HushMark from "@/components/HushMark";
+import { ProviderIcon } from "@/components/ProviderIcon";
 import type { Version } from "@/lib/db";
+import { PROVIDERS, type LinkMap, type ProviderKey } from "@/lib/providers";
 import { formatBytes, formatDate } from "@/lib/format";
 
 const VERCEL_BODY_LIMIT = 4 * 1024 * 1024; // ~4.5 MB serverless request cap
@@ -111,7 +113,7 @@ export default function AdminDashboard({
   const [version, setVersion] = useState("");
   const [changelog, setChangelog] = useState("");
   const [file, setFile] = useState<File | null>(null);
-  const [linkUrl, setLinkUrl] = useState("");
+  const [links, setLinks] = useState<LinkMap>({});
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
@@ -122,6 +124,7 @@ export default function AdminDashboard({
     apk_url: string;
     apk_pathname: string | null;
     size_bytes: number;
+    links?: LinkMap;
   }) {
     setStatus("Saving release…");
     const r = await fetch("/api/admin/versions", {
@@ -137,7 +140,7 @@ export default function AdminDashboard({
     setVersion("");
     setChangelog("");
     setFile(null);
-    setLinkUrl("");
+    setLinks({});
     if (fileRef.current) fileRef.current.value = "";
     setStatus("");
     setDone(true);
@@ -151,15 +154,23 @@ export default function AdminDashboard({
     setDone(false);
     if (!version.trim()) return setError("Enter a version number.");
 
-    // ── Link mode: no upload at all, just store the URL ──
+    // ── Link mode: no upload; store one or more provider links ──
     if (mode === "link") {
-      const link = linkUrl.trim();
-      if (!/^https?:\/\/.+\..+/i.test(link)) {
-        return setError("Paste a valid https:// link to the .apk file.");
+      const cleaned: LinkMap = {};
+      for (const p of PROVIDERS) {
+        const v = (links[p.key] ?? "").trim();
+        if (v) cleaned[p.key] = v;
+      }
+      const entries = Object.values(cleaned);
+      if (entries.length === 0) {
+        return setError("Add at least one download link.");
+      }
+      if (entries.some((u) => !/^https?:\/\/.+\..+/i.test(u))) {
+        return setError("Links must start with https:// and point to a file/page.");
       }
       setBusy(true);
       try {
-        await saveVersion({ apk_url: link, apk_pathname: null, size_bytes: 0 });
+        await saveVersion({ apk_url: "", apk_pathname: null, size_bytes: 0, links: cleaned });
       } catch (err) {
         setError((err as Error).message);
       } finally {
@@ -347,18 +358,37 @@ export default function AdminDashboard({
           {mode === "link" ? (
             <>
               <label className="mt-5 block text-xs uppercase tracking-wider text-white/40">
-                APK download link
+                Download links
               </label>
-              <input
-                value={linkUrl}
-                onChange={(e) => setLinkUrl(e.target.value)}
-                placeholder="https://github.com/…/app-release.apk"
-                className="mt-2 w-full rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3 text-sm outline-none focus:border-white/40"
-              />
-              <p className="mt-2 text-[11px] leading-relaxed text-white/35">
-                Paste a direct link to the <b>.apk</b> file. Easiest host:
-                your GitHub repo → <b>Releases → Draft a new release</b> → drag the
-                APK in → Publish → right-click the uploaded file → Copy link.
+              <p className="mb-3 mt-1 text-[11px] leading-relaxed text-white/35">
+                Fill any you like — visitors see one icon per link and pick a source.
+              </p>
+              <div className="space-y-2.5">
+                {PROVIDERS.map((p) => (
+                  <div
+                    key={p.key}
+                    className="flex items-center gap-2.5 rounded-xl border border-white/10 bg-white/[0.03] px-3 focus-within:border-white/40"
+                  >
+                    <span className="text-white/70">
+                      <ProviderIcon provider={p.key} size={18} />
+                    </span>
+                    <input
+                      value={links[p.key] ?? ""}
+                      onChange={(e) =>
+                        setLinks((prev) => ({
+                          ...prev,
+                          [p.key as ProviderKey]: e.target.value,
+                        }))
+                      }
+                      placeholder={p.name}
+                      className="w-full bg-transparent py-2.5 text-sm outline-none placeholder:text-white/30"
+                    />
+                  </div>
+                ))}
+              </div>
+              <p className="mt-2.5 text-[11px] leading-relaxed text-white/35">
+                Tip: on GitHub → <b>Releases → Draft a new release</b> → drag the
+                APK in → Publish → right-click the file → <b>Copy link</b>.
               </p>
             </>
           ) : (
@@ -505,10 +535,19 @@ export default function AdminDashboard({
                       </button>
                     </div>
                   </div>
-                  <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-white/40">
+                  <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-white/40">
                     <span>{formatDate(v.created_at)}</span>
-                    <span>{formatBytes(v.size_bytes)}</span>
+                    {v.size_bytes > 0 && <span>{formatBytes(v.size_bytes)}</span>}
                     <span>{v.downloads.toLocaleString()} downloads</span>
+                    {PROVIDERS.filter((p) => v.links?.[p.key]).length > 0 && (
+                      <span className="flex items-center gap-2 text-white/60">
+                        {PROVIDERS.filter((p) => v.links?.[p.key]).map((p) => (
+                          <span key={p.key} title={p.name}>
+                            <ProviderIcon provider={p.key} size={13} />
+                          </span>
+                        ))}
+                      </span>
+                    )}
                   </div>
                   {v.changelog?.trim() && (
                     <p className="mt-3 whitespace-pre-line border-t border-white/10 pt-3 text-sm text-white/60">

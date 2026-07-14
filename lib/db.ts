@@ -1,6 +1,8 @@
 // Version store. Uses Neon Postgres when DATABASE_URL is set (production),
 // otherwise a local JSON file so the site runs with zero setup in development.
 
+import type { LinkMap } from "./providers";
+
 export type Version = {
   id: number;
   version: string;
@@ -8,6 +10,7 @@ export type Version = {
   size_bytes: number;
   apk_url: string;
   apk_pathname: string | null;
+  links: LinkMap;
   downloads: number;
   is_latest: boolean;
   created_at: string;
@@ -19,6 +22,7 @@ export type NewVersion = {
   size_bytes: number;
   apk_url: string;
   apk_pathname: string | null;
+  links: LinkMap;
 };
 
 const useNeon = !!process.env.DATABASE_URL;
@@ -42,10 +46,13 @@ async function sql() {
           size_bytes BIGINT NOT NULL DEFAULT 0,
           apk_url TEXT NOT NULL,
           apk_pathname TEXT,
+          links JSONB NOT NULL DEFAULT '{}'::jsonb,
           downloads INTEGER NOT NULL DEFAULT 0,
           is_latest BOOLEAN NOT NULL DEFAULT false,
           created_at TIMESTAMPTZ NOT NULL DEFAULT now()
         )`;
+      // Add the column for databases created before multi-provider links.
+      await _sql!`ALTER TABLE versions ADD COLUMN IF NOT EXISTS links JSONB NOT NULL DEFAULT '{}'::jsonb`;
     })();
   }
   await _schema;
@@ -60,6 +67,7 @@ function rowToVersion(r: Record<string, unknown>): Version {
     size_bytes: Number(r.size_bytes ?? 0),
     apk_url: String(r.apk_url),
     apk_pathname: (r.apk_pathname as string) ?? null,
+    links: (r.links as LinkMap) ?? {},
     downloads: Number(r.downloads ?? 0),
     is_latest: Boolean(r.is_latest),
     created_at: new Date(r.created_at as string).toISOString(),
@@ -115,8 +123,8 @@ export async function createVersion(input: NewVersion): Promise<Version> {
     const s = await sql();
     await s`UPDATE versions SET is_latest = false WHERE is_latest = true`;
     const rows = await s`
-      INSERT INTO versions (version, changelog, size_bytes, apk_url, apk_pathname, is_latest)
-      VALUES (${input.version}, ${input.changelog}, ${input.size_bytes}, ${input.apk_url}, ${input.apk_pathname}, true)
+      INSERT INTO versions (version, changelog, size_bytes, apk_url, apk_pathname, links, is_latest)
+      VALUES (${input.version}, ${input.changelog}, ${input.size_bytes}, ${input.apk_url}, ${input.apk_pathname}, ${JSON.stringify(input.links)}, true)
       RETURNING *`;
     return rowToVersion((rows as Record<string, unknown>[])[0]);
   }
@@ -130,6 +138,7 @@ export async function createVersion(input: NewVersion): Promise<Version> {
     size_bytes: input.size_bytes,
     apk_url: input.apk_url,
     apk_pathname: input.apk_pathname,
+    links: input.links,
     downloads: 0,
     is_latest: true,
     created_at: new Date().toISOString(),

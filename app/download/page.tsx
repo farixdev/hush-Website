@@ -4,11 +4,11 @@ import Nav from "@/components/Nav";
 import Footer from "@/components/Footer";
 import Reveal from "@/components/Reveal";
 import HushMark from "@/components/HushMark";
-import DownloadButton from "@/components/DownloadButton";
+import ProviderLinks from "@/components/ProviderLinks";
 import VersionList from "@/components/VersionList";
 import Particles from "@/components/reactbits/Particles";
 import { listVersions, type Version } from "@/lib/db";
-import { formatDate } from "@/lib/format";
+import { formatDate, formatBytes } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
@@ -47,13 +47,15 @@ export default async function DownloadPage() {
                   Latest release{" "}
                   <span className="font-mono text-white">v{latest.version}</span>{" "}
                   · {formatDate(latest.created_at)}
+                  {latest.size_bytes > 0 && (
+                    <> · {formatBytes(latest.size_bytes)}</>
+                  )}
                 </p>
-                <div className="mt-8 flex justify-center">
-                  <DownloadButton
-                    id={latest.id}
-                    version={latest.version}
-                    sizeBytes={latest.size_bytes}
-                  />
+                <p className="mt-8 text-xs uppercase tracking-[0.2em] text-white/35">
+                  Download from
+                </p>
+                <div className="mt-4 flex justify-center">
+                  <ProviderLinks version={latest} large />
                 </div>
               </>
             ) : (
