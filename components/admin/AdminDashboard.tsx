@@ -16,14 +16,33 @@ import HushMark from "@/components/HushMark";
 import type { Version } from "@/lib/db";
 import { formatBytes, formatDate } from "@/lib/format";
 
+const VERCEL_BODY_LIMIT = 4 * 1024 * 1024; // ~4.5 MB serverless request cap
+
+// Reads a failed Response into a friendly message, even when the body is plain
+// text/HTML (e.g. a 413 "Request Entity Too Large" from the platform).
+async function readError(r: Response): Promise<string> {
+  if (r.status === 413) {
+    return "APK too large for this upload path. Connect Vercel Blob storage (DEPLOY.md → Step 3b) and redeploy — then large uploads work.";
+  }
+  const text = await r.text().catch(() => "");
+  try {
+    const j = JSON.parse(text);
+    return j.error || `Failed (${r.status})`;
+  } catch {
+    return text.trim().slice(0, 160) || `Failed (${r.status})`;
+  }
+}
+
 export default function AdminDashboard({
   username,
   versions,
   blobConfigured,
+  onVercel,
 }: {
   username: string;
   versions: Version[];
   blobConfigured: boolean;
+  onVercel: boolean;
 }) {
   const router = useRouter();
   const fileRef = useRef<HTMLInputElement>(null);
@@ -42,6 +61,14 @@ export default function AdminDashboard({
     setDone(false);
     if (!version.trim()) return setError("Enter a version number.");
     if (!file) return setError("Choose an APK file.");
+
+    // On Vercel, large files can only go through Blob (the serverless request
+    // body is capped and the filesystem is read-only).
+    if (!blobConfigured && onVercel && file.size > VERCEL_BODY_LIMIT) {
+      return setError(
+        "This APK is too large to upload without Vercel Blob. Connect Blob storage (DEPLOY.md → Step 3b) and redeploy, then try again."
+      );
+    }
 
     setBusy(true);
     try {
@@ -67,7 +94,7 @@ export default function AdminDashboard({
           method: "POST",
           body: fd,
         });
-        if (!r.ok) throw new Error((await r.json()).error || "Upload failed");
+        if (!r.ok) throw new Error(await readError(r));
         const j = await r.json();
         url = j.url;
         pathname = j.pathname;
@@ -86,7 +113,7 @@ export default function AdminDashboard({
           size_bytes: size,
         }),
       });
-      if (!r2.ok) throw new Error((await r2.json()).error || "Save failed");
+      if (!r2.ok) throw new Error(await readError(r2));
 
       setVersion("");
       setChangelog("");
@@ -155,6 +182,14 @@ export default function AdminDashboard({
           <div className="flex items-center gap-2 text-sm font-semibold">
             <UploadCloud size={18} /> New release
           </div>
+
+          {onVercel && !blobConfigured && (
+            <div className="mt-5 rounded-xl border border-white/25 bg-white/[0.04] p-3.5 text-xs leading-relaxed text-white/70">
+              <b className="text-white">Vercel Blob isn&apos;t connected.</b> Large
+              APK uploads will fail. Add Blob storage (DEPLOY.md → Step&nbsp;3b) and
+              redeploy to enable uploads.
+            </div>
+          )}
 
           <label className="mt-6 block text-xs uppercase tracking-wider text-white/40">
             Version

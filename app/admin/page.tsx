@@ -27,6 +27,7 @@ export default async function AdminPage() {
       username={admin}
       versions={versions}
       blobConfigured={isBlobConfigured()}
+      onVercel={!!process.env.VERCEL}
     />
   );
 }
