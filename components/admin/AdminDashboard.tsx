@@ -18,6 +18,24 @@ import { formatBytes, formatDate } from "@/lib/format";
 
 const VERCEL_BODY_LIMIT = 4 * 1024 * 1024; // ~4.5 MB serverless request cap
 
+// Safety net so a stalled upload surfaces a clear error instead of spinning.
+function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
+  return Promise.race([
+    p,
+    new Promise<T>((_, reject) =>
+      setTimeout(
+        () =>
+          reject(
+            new Error(
+              "Upload timed out. Check your connection and try again — if it keeps failing, confirm Vercel Blob is connected and you're on the production URL."
+            )
+          ),
+        ms
+      )
+    ),
+  ]);
+}
+
 // Reads a failed Response into a friendly message, even when the body is plain
 // text/HTML (e.g. a 413 "Request Entity Too Large" from the platform).
 async function readError(r: Response): Promise<string> {
@@ -122,27 +140,35 @@ export default function AdminDashboard({
 
       if (blobConfigured) {
         setStatus("Uploading…");
-        const { upload } = await import("@vercel/blob/client");
-        // Large files upload as multiple chunks and the callback reports each
-        // chunk separately (0→100 per chunk). Aggregate bytes across chunks
-        // against the true file size so the bar climbs once, smoothly.
-        const totalBytes = file.size || 1;
-        let carried = 0;
-        let lastLoaded = 0;
-        const blob = await upload(file.name, file, {
-          access: "public",
-          handleUploadUrl: "/api/admin/blob-upload",
-          onUploadProgress: (e) => {
-            const loaded = e.loaded ?? 0;
-            if (loaded < lastLoaded) carried += lastLoaded; // new chunk started
-            lastLoaded = loaded;
-            const pct = Math.min(
-              99,
-              Math.round(((carried + loaded) / totalBytes) * 100)
-            );
-            setProgress((prev) => (pct > prev ? pct : prev)); // monotonic
-          },
+        const { put } = await import("@vercel/blob/client");
+
+        // Get a scoped upload token from our server (no completion webhook).
+        const safeName = `hush-${
+          version.trim().replace(/[^a-zA-Z0-9._-]/g, "") || "x"
+        }.apk`;
+        const tr = await fetch("/api/admin/blob-token", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ pathname: safeName }),
         });
+        if (!tr.ok) throw new Error(await readError(tr));
+        const { token, pathname: putPath } = await tr.json();
+
+        const totalBytes = file.size || 1;
+        // The SDK reports cumulative loaded bytes, so this is overall progress.
+        const blob = await withTimeout(
+          put(putPath, file, {
+            access: "public",
+            token,
+            contentType: "application/vnd.android.package-archive",
+            multipart: file.size > 8 * 1024 * 1024,
+            onUploadProgress: (e) => {
+              const pct = Math.min(99, Math.round((e.loaded / totalBytes) * 100));
+              setProgress((prev) => (pct > prev ? pct : prev));
+            },
+          }),
+          10 * 60 * 1000
+        );
         url = blob.url;
         pathname = blob.pathname;
       } else {
