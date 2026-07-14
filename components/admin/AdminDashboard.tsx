@@ -11,6 +11,7 @@ import {
   FileUp,
   ExternalLink,
   CheckCircle2,
+  Link2,
 } from "lucide-react";
 import HushMark from "@/components/HushMark";
 import type { Version } from "@/lib/db";
@@ -106,14 +107,42 @@ export default function AdminDashboard({
   const router = useRouter();
   const fileRef = useRef<HTMLInputElement>(null);
 
+  const [mode, setMode] = useState<"link" | "file">("link");
   const [version, setVersion] = useState("");
   const [changelog, setChangelog] = useState("");
   const [file, setFile] = useState<File | null>(null);
+  const [linkUrl, setLinkUrl] = useState("");
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
   const [done, setDone] = useState(false);
   const [progress, setProgress] = useState(0); // 0–100 during upload
+
+  async function saveVersion(payload: {
+    apk_url: string;
+    apk_pathname: string | null;
+    size_bytes: number;
+  }) {
+    setStatus("Saving release…");
+    const r = await fetch("/api/admin/versions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        version: version.trim(),
+        changelog: changelog.trim(),
+        ...payload,
+      }),
+    });
+    if (!r.ok) throw new Error(await readError(r));
+    setVersion("");
+    setChangelog("");
+    setFile(null);
+    setLinkUrl("");
+    if (fileRef.current) fileRef.current.value = "";
+    setStatus("");
+    setDone(true);
+    router.refresh();
+  }
 
   async function publish(e: React.FormEvent) {
     e.preventDefault();
@@ -121,6 +150,25 @@ export default function AdminDashboard({
     setError("");
     setDone(false);
     if (!version.trim()) return setError("Enter a version number.");
+
+    // ── Link mode: no upload at all, just store the URL ──
+    if (mode === "link") {
+      const link = linkUrl.trim();
+      if (!/^https?:\/\/.+\..+/i.test(link)) {
+        return setError("Paste a valid https:// link to the .apk file.");
+      }
+      setBusy(true);
+      try {
+        await saveVersion({ apk_url: link, apk_pathname: null, size_bytes: 0 });
+      } catch (err) {
+        setError((err as Error).message);
+      } finally {
+        setBusy(false);
+      }
+      return;
+    }
+
+    // ── File mode ──
     if (!file) return setError("Choose an APK file.");
 
     // On Vercel, large files can only go through Blob (the serverless request
@@ -183,27 +231,7 @@ export default function AdminDashboard({
       }
 
       setProgress(100);
-      setStatus("Saving release…");
-      const r2 = await fetch("/api/admin/versions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          version: version.trim(),
-          changelog: changelog.trim(),
-          apk_url: url,
-          apk_pathname: pathname,
-          size_bytes: size,
-        }),
-      });
-      if (!r2.ok) throw new Error(await readError(r2));
-
-      setVersion("");
-      setChangelog("");
-      setFile(null);
-      if (fileRef.current) fileRef.current.value = "";
-      setStatus("");
-      setDone(true);
-      router.refresh();
+      await saveVersion({ apk_url: url, apk_pathname: pathname, size_bytes: size });
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -266,15 +294,36 @@ export default function AdminDashboard({
             <UploadCloud size={18} /> New release
           </div>
 
-          {onVercel && !blobConfigured && (
-            <div className="mt-5 rounded-xl border border-white/25 bg-white/[0.04] p-3.5 text-xs leading-relaxed text-white/70">
-              <b className="text-white">Vercel Blob isn&apos;t connected.</b> Large
-              APK uploads will fail. Add Blob storage (DEPLOY.md → Step&nbsp;3b) and
-              redeploy to enable uploads.
+          {/* mode switch */}
+          <div className="mt-5 grid grid-cols-2 gap-1 rounded-xl bg-white/[0.05] p-1">
+            <button
+              type="button"
+              onClick={() => setMode("link")}
+              className={`flex items-center justify-center gap-1.5 rounded-lg py-2 text-xs font-semibold transition-colors ${
+                mode === "link" ? "bg-white text-black" : "text-white/60"
+              }`}
+            >
+              <Link2 size={14} /> Paste link
+            </button>
+            <button
+              type="button"
+              onClick={() => setMode("file")}
+              className={`flex items-center justify-center gap-1.5 rounded-lg py-2 text-xs font-semibold transition-colors ${
+                mode === "file" ? "bg-white text-black" : "text-white/60"
+              }`}
+            >
+              <FileUp size={14} /> Upload file
+            </button>
+          </div>
+
+          {mode === "file" && onVercel && !blobConfigured && (
+            <div className="mt-4 rounded-xl border border-white/25 bg-white/[0.04] p-3.5 text-xs leading-relaxed text-white/70">
+              <b className="text-white">Vercel Blob isn&apos;t connected.</b> Uploads
+              will fail — either add Blob storage, or use <b>Paste link</b> instead.
             </div>
           )}
 
-          <label className="mt-6 block text-xs uppercase tracking-wider text-white/40">
+          <label className="mt-5 block text-xs uppercase tracking-wider text-white/40">
             Version
           </label>
           <input
@@ -295,33 +344,54 @@ export default function AdminDashboard({
             className="mt-2 w-full resize-y rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3 text-sm leading-relaxed outline-none focus:border-white/40"
           />
 
-          <label className="mt-5 block text-xs uppercase tracking-wider text-white/40">
-            APK file
-          </label>
-          <button
-            type="button"
-            onClick={() => fileRef.current?.click()}
-            className="mt-2 flex w-full items-center gap-3 rounded-xl border border-dashed border-white/20 px-4 py-4 text-left text-sm transition-colors hover:border-white/50"
-          >
-            <FileUp size={18} className="text-white/50" />
-            {file ? (
-              <span className="min-w-0">
-                <span className="block truncate font-medium">{file.name}</span>
-                <span className="text-xs text-white/40">
-                  {formatBytes(file.size)}
-                </span>
-              </span>
-            ) : (
-              <span className="text-white/40">Choose .apk…</span>
-            )}
-          </button>
-          <input
-            ref={fileRef}
-            type="file"
-            accept=".apk,application/vnd.android.package-archive"
-            className="hidden"
-            onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-          />
+          {mode === "link" ? (
+            <>
+              <label className="mt-5 block text-xs uppercase tracking-wider text-white/40">
+                APK download link
+              </label>
+              <input
+                value={linkUrl}
+                onChange={(e) => setLinkUrl(e.target.value)}
+                placeholder="https://github.com/…/app-release.apk"
+                className="mt-2 w-full rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3 text-sm outline-none focus:border-white/40"
+              />
+              <p className="mt-2 text-[11px] leading-relaxed text-white/35">
+                Paste a direct link to the <b>.apk</b> file. Easiest host:
+                your GitHub repo → <b>Releases → Draft a new release</b> → drag the
+                APK in → Publish → right-click the uploaded file → Copy link.
+              </p>
+            </>
+          ) : (
+            <>
+              <label className="mt-5 block text-xs uppercase tracking-wider text-white/40">
+                APK file
+              </label>
+              <button
+                type="button"
+                onClick={() => fileRef.current?.click()}
+                className="mt-2 flex w-full items-center gap-3 rounded-xl border border-dashed border-white/20 px-4 py-4 text-left text-sm transition-colors hover:border-white/50"
+              >
+                <FileUp size={18} className="text-white/50" />
+                {file ? (
+                  <span className="min-w-0">
+                    <span className="block truncate font-medium">{file.name}</span>
+                    <span className="text-xs text-white/40">
+                      {formatBytes(file.size)}
+                    </span>
+                  </span>
+                ) : (
+                  <span className="text-white/40">Choose .apk…</span>
+                )}
+              </button>
+              <input
+                ref={fileRef}
+                type="file"
+                accept=".apk,application/vnd.android.package-archive"
+                className="hidden"
+                onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+              />
+            </>
+          )}
 
           {error && <p className="mt-4 text-sm text-white/80">⚠ {error}</p>}
           {done && !error && (
@@ -330,7 +400,7 @@ export default function AdminDashboard({
             </p>
           )}
 
-          {busy && (
+          {busy && mode === "file" && (
             <div className="mt-5">
               <div className="mb-1.5 flex items-center justify-between text-xs text-white/60">
                 <span>
@@ -375,11 +445,13 @@ export default function AdminDashboard({
             )}
           </button>
 
-          <p className="mt-3 text-center text-[11px] text-white/30">
-            {blobConfigured
-              ? "Storage: Vercel Blob"
-              : "Storage: local /public/uploads (dev)"}
-          </p>
+          {mode === "file" && (
+            <p className="mt-3 text-center text-[11px] text-white/30">
+              {blobConfigured
+                ? "Storage: Vercel Blob"
+                : "Storage: local /public/uploads (dev)"}
+            </p>
+          )}
         </form>
 
         {/* ── Releases ── */}
