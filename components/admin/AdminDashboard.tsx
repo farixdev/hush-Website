@@ -99,6 +99,7 @@ export default function AdminDashboard({
 
   async function publish(e: React.FormEvent) {
     e.preventDefault();
+    if (busy) return; // guard against double-submit
     setError("");
     setDone(false);
     if (!version.trim()) return setError("Enter a version number.");
@@ -122,10 +123,25 @@ export default function AdminDashboard({
       if (blobConfigured) {
         setStatus("Uploading…");
         const { upload } = await import("@vercel/blob/client");
+        // Large files upload as multiple chunks and the callback reports each
+        // chunk separately (0→100 per chunk). Aggregate bytes across chunks
+        // against the true file size so the bar climbs once, smoothly.
+        const totalBytes = file.size || 1;
+        let carried = 0;
+        let lastLoaded = 0;
         const blob = await upload(file.name, file, {
           access: "public",
           handleUploadUrl: "/api/admin/blob-upload",
-          onUploadProgress: (e) => setProgress(Math.round(e.percentage)),
+          onUploadProgress: (e) => {
+            const loaded = e.loaded ?? 0;
+            if (loaded < lastLoaded) carried += lastLoaded; // new chunk started
+            lastLoaded = loaded;
+            const pct = Math.min(
+              99,
+              Math.round(((carried + loaded) / totalBytes) * 100)
+            );
+            setProgress((prev) => (pct > prev ? pct : prev)); // monotonic
+          },
         });
         url = blob.url;
         pathname = blob.pathname;
