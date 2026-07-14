@@ -119,8 +119,6 @@ export default function Home() {
               <span>Free</span>
               <span className="h-3 w-px bg-white/15" />
               <span>No account</span>
-              <span className="h-3 w-px bg-white/15" />
-              <span>~50&nbsp;MB APK</span>
             </div>
           </div>
 

@@ -33,6 +33,47 @@ async function readError(r: Response): Promise<string> {
   }
 }
 
+// Uploads FormData with real progress events (fetch can't report upload
+// progress; XMLHttpRequest can). Resolves the parsed JSON response.
+function xhrUpload(
+  url: string,
+  formData: FormData,
+  onProgress: (pct: number) => void
+): Promise<{ url: string; pathname: string; size: number }> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", url);
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100));
+    };
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        try {
+          resolve(JSON.parse(xhr.responseText));
+        } catch {
+          reject(new Error("Unexpected server response."));
+        }
+      } else if (xhr.status === 413) {
+        reject(
+          new Error(
+            "APK too large for this upload path. Connect Vercel Blob storage (DEPLOY.md → Step 3b) and redeploy."
+          )
+        );
+      } else {
+        let msg = `Upload failed (${xhr.status})`;
+        try {
+          msg = JSON.parse(xhr.responseText).error || msg;
+        } catch {
+          if (xhr.responseText) msg = xhr.responseText.slice(0, 160);
+        }
+        reject(new Error(msg));
+      }
+    };
+    xhr.onerror = () => reject(new Error("Network error during upload."));
+    xhr.send(formData);
+  });
+}
+
 export default function AdminDashboard({
   username,
   versions,
@@ -54,6 +95,7 @@ export default function AdminDashboard({
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
   const [done, setDone] = useState(false);
+  const [progress, setProgress] = useState(0); // 0–100 during upload
 
   async function publish(e: React.FormEvent) {
     e.preventDefault();
@@ -71,17 +113,19 @@ export default function AdminDashboard({
     }
 
     setBusy(true);
+    setProgress(0);
     try {
       let url: string;
       let pathname: string | null = null;
       let size = file.size;
 
       if (blobConfigured) {
-        setStatus("Uploading to Blob storage…");
+        setStatus("Uploading…");
         const { upload } = await import("@vercel/blob/client");
         const blob = await upload(file.name, file, {
           access: "public",
           handleUploadUrl: "/api/admin/blob-upload",
+          onUploadProgress: (e) => setProgress(Math.round(e.percentage)),
         });
         url = blob.url;
         pathname = blob.pathname;
@@ -90,17 +134,13 @@ export default function AdminDashboard({
         const fd = new FormData();
         fd.append("file", file);
         fd.append("version", version.trim());
-        const r = await fetch("/api/admin/upload-local", {
-          method: "POST",
-          body: fd,
-        });
-        if (!r.ok) throw new Error(await readError(r));
-        const j = await r.json();
+        const j = await xhrUpload("/api/admin/upload-local", fd, setProgress);
         url = j.url;
         pathname = j.pathname;
         size = j.size;
       }
 
+      setProgress(100);
       setStatus("Saving release…");
       const r2 = await fetch("/api/admin/versions", {
         method: "POST",
@@ -126,6 +166,7 @@ export default function AdminDashboard({
       setError((err as Error).message);
     } finally {
       setBusy(false);
+      setProgress(0);
     }
   }
 
@@ -247,6 +288,34 @@ export default function AdminDashboard({
             </p>
           )}
 
+          {busy && (
+            <div className="mt-5">
+              <div className="mb-1.5 flex items-center justify-between text-xs text-white/60">
+                <span>
+                  {progress > 0 && progress < 100
+                    ? "Uploading…"
+                    : status || "Working…"}
+                </span>
+                {progress > 0 && progress < 100 && (
+                  <span className="font-mono text-white/80">{progress}%</span>
+                )}
+              </div>
+              <div className="h-2 w-full overflow-hidden rounded-full bg-white/10">
+                <div
+                  className={`h-full rounded-full bg-white transition-[width] duration-200 ease-out ${
+                    progress === 0 ? "animate-pulse w-1/3" : ""
+                  }`}
+                  style={progress > 0 ? { width: `${progress}%` } : undefined}
+                />
+              </div>
+              <p className="mt-1.5 text-[11px] text-white/35">
+                {progress >= 100
+                  ? "Finalizing…"
+                  : "Large APKs can take a while on slower connections — keep this tab open."}
+              </p>
+            </div>
+          )}
+
           <button
             type="submit"
             disabled={busy}
@@ -255,7 +324,9 @@ export default function AdminDashboard({
             {busy ? (
               <>
                 <Loader2 size={16} className="animate-spin" />
-                {status || "Working…"}
+                {progress > 0 && progress < 100
+                  ? `Uploading ${progress}%`
+                  : status || "Working…"}
               </>
             ) : (
               "Publish release"

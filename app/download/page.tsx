@@ -103,9 +103,6 @@ export default async function DownloadPage() {
             <h2 className="mt-3 text-3xl font-bold tracking-tight">
               Version history
             </h2>
-            <p className="mt-2 text-sm text-white/45">
-              Every release, what changed, and its size.
-            </p>
           </Reveal>
           <VersionList versions={versions} />
         </div>
