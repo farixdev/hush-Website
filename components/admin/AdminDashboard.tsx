@@ -16,7 +16,12 @@ import {
 import HushMark from "@/components/HushMark";
 import { ProviderIcon } from "@/components/ProviderIcon";
 import type { Version } from "@/lib/db";
-import { PROVIDERS, type LinkMap, type ProviderKey } from "@/lib/providers";
+import {
+  PROVIDERS,
+  type LinkMap,
+  type ProviderKey,
+  type DisplayStyle,
+} from "@/lib/providers";
 import { formatBytes, formatDate } from "@/lib/format";
 
 const VERCEL_BODY_LIMIT = 4 * 1024 * 1024; // ~4.5 MB serverless request cap
@@ -114,6 +119,7 @@ export default function AdminDashboard({
   const [changelog, setChangelog] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [links, setLinks] = useState<LinkMap>({});
+  const [display, setDisplay] = useState<DisplayStyle>("icons");
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
@@ -133,6 +139,7 @@ export default function AdminDashboard({
       body: JSON.stringify({
         version: version.trim(),
         changelog: changelog.trim(),
+        display,
         ...payload,
       }),
     });
@@ -141,6 +148,7 @@ export default function AdminDashboard({
     setChangelog("");
     setFile(null);
     setLinks({});
+    setDisplay("icons");
     if (fileRef.current) fileRef.current.value = "";
     setStatus("");
     setDone(true);
@@ -422,6 +430,35 @@ export default function AdminDashboard({
               />
             </>
           )}
+
+          <label className="mt-5 block text-xs uppercase tracking-wider text-white/40">
+            How it shows to visitors
+          </label>
+          <div className="mt-2 grid grid-cols-2 gap-1 rounded-xl bg-white/[0.05] p-1">
+            <button
+              type="button"
+              onClick={() => setDisplay("icons")}
+              className={`rounded-lg py-2 text-xs font-semibold transition-colors ${
+                display === "icons" ? "bg-white text-black" : "text-white/60"
+              }`}
+            >
+              Source icons
+            </button>
+            <button
+              type="button"
+              onClick={() => setDisplay("buttons")}
+              className={`rounded-lg py-2 text-xs font-semibold transition-colors ${
+                display === "buttons" ? "bg-white text-black" : "text-white/60"
+              }`}
+            >
+              Download button
+            </button>
+          </div>
+          <p className="mt-1.5 text-[11px] text-white/35">
+            {display === "icons"
+              ? "Visitors see a provider icon for each link."
+              : "Visitors see a plain “Download” button (named buttons if you add multiple links)."}
+          </p>
 
           {error && <p className="mt-4 text-sm text-white/80">⚠ {error}</p>}
           {done && !error && (

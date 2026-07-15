@@ -5,25 +5,31 @@ export type LinkMap = Partial<Record<ProviderKey, string>>;
 export const PROVIDERS: {
   key: ProviderKey;
   name: string;
+  short: string;
   hint: string;
 }[] = [
   {
     key: "github",
     name: "GitHub Releases",
+    short: "GitHub",
     hint: "https://github.com/you/repo/releases/download/v1.0.0/app.apk",
   },
-  { key: "mega", name: "MEGA", hint: "https://mega.nz/file/…" },
+  { key: "mega", name: "MEGA", short: "MEGA", hint: "https://mega.nz/file/…" },
   {
     key: "mediafire",
     name: "MediaFire",
+    short: "MediaFire",
     hint: "https://www.mediafire.com/file/…/app.apk/file",
   },
   {
     key: "gdrive",
     name: "Google Drive",
+    short: "Drive",
     hint: "https://drive.google.com/uc?export=download&id=…",
   },
 ];
+
+export type DisplayStyle = "icons" | "buttons";
 
 /** The first provider link that exists, following PROVIDERS order. */
 export function firstLink(links: LinkMap | null | undefined): string {

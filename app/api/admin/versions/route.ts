@@ -38,7 +38,12 @@ export async function POST(req: NextRequest) {
   let size_bytes = Number(body.size_bytes ?? 0);
   if (!size_bytes && apk_url.startsWith("http")) {
     try {
-      const head = await fetch(apk_url, { method: "HEAD", redirect: "follow" });
+      // Time-boxed: some hosts (MEGA, Drive pages) don't answer HEAD quickly.
+      const head = await fetch(apk_url, {
+        method: "HEAD",
+        redirect: "follow",
+        signal: AbortSignal.timeout(5000),
+      });
       const len = head.headers.get("content-length");
       if (len) size_bytes = Number(len);
     } catch {
@@ -53,6 +58,7 @@ export async function POST(req: NextRequest) {
     apk_url,
     apk_pathname: body.apk_pathname ? String(body.apk_pathname) : null,
     links,
+    display: body.display === "buttons" ? "buttons" : "icons",
   });
 
   return NextResponse.json({ version: created });
