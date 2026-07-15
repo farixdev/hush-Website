@@ -8,7 +8,7 @@ export default function Footer() {
         <div className="flex items-center gap-2.5">
           <HushMark size={26} />
           <span className="text-sm font-semibold">Hush</span>
-          <span className="text-sm text-white/30">· anonymous · ephemeral</span>
+          <span className="text-sm text-white/30"> anonymous</span>
         </div>
         <div className="flex items-center gap-6 text-sm text-white/50">
           <Link href="/" className="hover:text-white">

@@ -54,7 +54,7 @@ const STEPS = [
   {
     n: "01",
     title: "Open Hush",
-    body: "A short code appears instantly — no setup, no account.",
+    body: "A short code appears instantly no setup, no account.",
   },
   {
     n: "02",
@@ -82,10 +82,7 @@ export default function Home() {
         />
         <div className="container-page relative grid min-h-screen grid-cols-1 items-center gap-12 pb-20 pt-36 lg:grid-cols-2">
           <div>
-            <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.03] px-3.5 py-1.5 text-xs text-white/60">
-              <span className="h-1.5 w-1.5 rounded-full bg-white" />
-              Anonymous · ephemeral · Android
-            </div>
+            
 
             <h1 className="text-[13vw] font-extrabold leading-[0.95] tracking-tight sm:text-6xl lg:text-7xl">
               <BlurText text="Say it." as="span" className="block" />
@@ -99,7 +96,7 @@ export default function Home() {
 
             <p className="mt-7 max-w-md text-lg leading-relaxed text-white/60">
               A chat with no accounts and no trace. Get a code, share it with one
-              person, talk in real time — then end the session and it disappears.
+              person, talk in real time then end the session and it disappears.
             </p>
 
             <div className="mt-9 flex flex-wrap items-center gap-4">

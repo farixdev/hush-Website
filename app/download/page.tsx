@@ -76,7 +76,7 @@ export default async function DownloadPage() {
                 {
                   icon: ShieldCheck,
                   t: "Open & get a code",
-                  d: "No sign-up — a code appears instantly.",
+                  d: "No sign-up, a code appears instantly.",
                 },
                 {
                   icon: Cloud,
