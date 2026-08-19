@@ -1,12 +1,11 @@
-import Link from "next/link";
 import {
   ArrowUpRight,
   EyeOff,
+  Lock,
+  Phone,
+  Wifi,
+  Users,
   Timer,
-  KeyRound,
-  Zap,
-  ShieldOff,
-  Contrast,
 } from "lucide-react";
 
 import Nav from "@/components/Nav";
@@ -21,32 +20,32 @@ const FEATURES = [
   {
     icon: EyeOff,
     title: "Anonymous",
-    body: "No login, no sign-up, no profile. You're never asked for a single detail.",
+    body: "No login, no sign-up, no profile. Each session you get a fresh throwaway name — nothing ever ties back to you.",
+  },
+  {
+    icon: Lock,
+    title: "End-to-end encrypted",
+    body: "Messages and calls are sealed on your device. The server only ever sees scrambled text — and a safety code lets you confirm no one's in the middle.",
+  },
+  {
+    icon: Phone,
+    title: "Voice calls",
+    body: "Talk, don't just type. Calls are peer-to-peer and encrypted, with mute and speaker — nothing routes through a server.",
+  },
+  {
+    icon: Wifi,
+    title: "Works nearby, offline",
+    body: "On the same Wi-Fi — or over Bluetooth with no internet at all — find the other phone and chat or call, straight between the two devices.",
+  },
+  {
+    icon: Users,
+    title: "Private groups",
+    body: "Share one code for a group chat and a group voice call. Every message is sealed separately for each person in the room.",
   },
   {
     icon: Timer,
     title: "Ephemeral",
-    body: "A session lives only while you're in it. Leave, and the whole thread is deleted.",
-  },
-  {
-    icon: KeyRound,
-    title: "Code-based",
-    body: "Get a short code, share it, and the moment it's entered you're connected.",
-  },
-  {
-    icon: Zap,
-    title: "Real-time",
-    body: "Messages, typing and read receipts sync instantly between two devices.",
-  },
-  {
-    icon: ShieldOff,
-    title: "No tracking",
-    body: "No contact lists, no history, no analytics profile. Nothing follows you.",
-  },
-  {
-    icon: Contrast,
-    title: "Black & white",
-    body: "A deliberately stark, minimal interface. Nothing to distract from the words.",
+    body: "A session lives only while you're in it. Leave, and the whole conversation is deleted for everyone.",
   },
 ];
 
@@ -54,17 +53,17 @@ const STEPS = [
   {
     n: "01",
     title: "Open Hush",
-    body: "A short code appears instantly no setup, no account.",
+    body: "A code appears instantly — no setup, no account, nothing to grant.",
   },
   {
     n: "02",
     title: "Share the code",
-    body: "Send it to one person, any way you like.",
+    body: "Send it to one person, start a private group, or skip the internet and find someone nearby.",
   },
   {
     n: "03",
     title: "Talk, then vanish",
-    body: "They enter it, you're connected. End the session and it's gone for both.",
+    body: "Message or call, end-to-end encrypted. End the session and it's deleted for everyone.",
   },
 ];
 
@@ -95,8 +94,9 @@ export default function Home() {
             </h1>
 
             <p className="mt-7 max-w-md text-lg leading-relaxed text-white/60">
-              A chat with no accounts and no trace. Get a code, share it with one
-              person, talk in real time then end the session and it disappears.
+              A private chat and voice call with no accounts and no trace. Get a
+              code, share it, and talk in real time — end-to-end encrypted. Leave,
+              and it's gone. No internet? Connect to someone nearby.
             </p>
 
             <div className="mt-9 flex flex-wrap items-center gap-4">
@@ -112,10 +112,12 @@ export default function Home() {
               </a>
             </div>
 
-            <div className="mt-10 flex items-center gap-6 text-xs text-white/40">
+            <div className="mt-10 flex flex-wrap items-center gap-x-6 gap-y-3 text-xs text-white/40">
               <span>Free</span>
               <span className="h-3 w-px bg-white/15" />
               <span>No account</span>
+              <span className="h-3 w-px bg-white/15" />
+              <span>End-to-end encrypted</span>
             </div>
           </div>
 
@@ -190,7 +192,8 @@ export default function Home() {
               <span className="shiny-text">Nothing to lose.</span> Literally.
             </h2>
             <p className="mx-auto mt-5 max-w-md text-white/55">
-              Install the APK, open it, and start a session in seconds.
+              Install the APK, open it, and start a private session in seconds — a
+              chat, a call, or someone nearby.
             </p>
             <div className="mt-9 flex items-center justify-center">
               <StarBorder href="/download">

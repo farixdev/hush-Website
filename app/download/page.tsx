@@ -1,4 +1,5 @@
-import { Smartphone, ShieldCheck, Cloud } from "lucide-react";
+import type { Metadata } from "next";
+import { Smartphone, ShieldCheck, Wifi } from "lucide-react";
 
 import Nav from "@/components/Nav";
 import Footer from "@/components/Footer";
@@ -11,6 +12,20 @@ import { listVersions, type Version } from "@/lib/db";
 import { formatDate, formatBytes } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
+
+export const metadata: Metadata = {
+  title: "Download Hush for Android",
+  description:
+    "Download the latest Hush APK for Android — free, anonymous, end-to-end encrypted chat and voice calls. No sign-up. Install, open, and get a code in seconds.",
+  alternates: { canonical: "/download" },
+  openGraph: {
+    title: "Download Hush for Android",
+    description:
+      "Get the latest Hush APK — free, anonymous, encrypted chat and voice calls for Android. No account, nothing kept.",
+    url: "/download",
+    images: ["/hush-mask.png"],
+  },
+};
 
 async function safeVersions(): Promise<Version[]> {
   try {
@@ -76,12 +91,12 @@ export default async function DownloadPage() {
                 {
                   icon: ShieldCheck,
                   t: "Open & get a code",
-                  d: "No sign-up, a code appears instantly.",
+                  d: "No sign-up — a code appears instantly, encrypted end-to-end.",
                 },
                 {
-                  icon: Cloud,
-                  t: "Needs internet",
-                  d: "Messages sync in real time between two devices.",
+                  icon: Wifi,
+                  t: "Chat, call, or nearby",
+                  d: "Real-time text and voice online, or connect over Wi-Fi / Bluetooth with no internet.",
                 },
               ].map((s) => (
                 <div key={s.t} className="card p-5 text-left">
