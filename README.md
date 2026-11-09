@@ -15,7 +15,10 @@ Minimalist black-and-white marketing site for the **Hush** app, with a built-in
 
 | Route | What it is |
 | --- | --- |
-| `/` | Animated single-page landing (hero, features, how-it-works, CTA) |
+| `/` | Landing page (hero, live simulator, screenshot gallery, features, CTA) |
+| `/docs` | User Manual & Documentation: 7-chapter guide with screenshots |
+| `/security` | Security Whitepaper: cryptographic primitives, metadata defense, comparison table |
+| `/faq` | Categorized, searchable Frequently Asked Questions |
 | `/download` | Latest release + full version history / changelog |
 | `/admin` | Password-protected CMS: upload APKs, edit versions & changelogs |
 
@@ -95,4 +98,4 @@ Change these with `ADMIN_USERNAME` / `ADMIN_PASSWORD` env vars.
 - **Storage abstraction** (`lib/storage.ts`) uses Vercel Blob or local files.
 - Fully responsive, dark, `prefers-reduced-motion`-aware.
 
-Built by [farixdev](https://github.com/farixdev).
+A product of [Edge Brain Software](https://www.edgebrainsoftware.com) · Case study: [edgebrainsoftware.com/work/hush](https://www.edgebrainsoftware.com/work/hush).

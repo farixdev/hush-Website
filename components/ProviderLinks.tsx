@@ -44,7 +44,7 @@ export default function ProviderLinks({
         <a
           href={`/api/download/${version.id}?p=${p.key}`}
           target="_blank"
-          rel="noreferrer"
+          rel="noopener noreferrer"
           className={primaryBtn}
         >
           <Download size={large ? 20 : 15} /> Download
@@ -79,7 +79,7 @@ export default function ProviderLinks({
           key={p.key}
           href={`/api/download/${version.id}?p=${p.key}`}
           target="_blank"
-          rel="noreferrer"
+          rel="noopener noreferrer"
           title={`Download from ${p.name}`}
           aria-label={`Download from ${p.name}`}
           className={`group inline-flex ${box} items-center justify-center rounded-2xl border border-white/15 bg-white/[0.03] text-white/85 transition-colors hover:border-white hover:bg-white hover:text-black`}

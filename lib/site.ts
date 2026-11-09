@@ -12,7 +12,7 @@ export const SITE_NAME = "Hush";
 export const SITE_TITLE = "Hush — anonymous, encrypted chat & voice calls";
 
 export const SITE_DESCRIPTION =
-  "Hush is a free, anonymous messenger for Android. No sign-up, no trace — get a code, share it, and chat or voice-call in real time, end-to-end encrypted. Works nearby over Wi-Fi or Bluetooth with no internet, plus private groups. Leave, and everything is deleted.";
+  "Hush is a free, anonymous messenger for Android. No sign-up, no phone numbers, no trace. Get an expiring 6-digit code, share it, and chat or voice-call in real time with end-to-end encryption. Works nearby over Wi-Fi or Bluetooth with zero internet, plus private groups. Leave, and everything is permanently deleted.";
 
 export const SITE_KEYWORDS = [
   "anonymous chat",
@@ -21,6 +21,7 @@ export const SITE_KEYWORDS = [
   "private chat app",
   "ephemeral messaging",
   "no sign up chat",
+  "no phone number messenger",
   "encrypted voice calls",
   "offline chat app",
   "Bluetooth chat",
@@ -29,5 +30,9 @@ export const SITE_KEYWORDS = [
   "private group chat",
   "anonymous messaging app",
   "Android chat app",
+  "anti surveillance chat",
+  "RAM only messaging",
+  "zero metadata chat",
+  "Hush user manual",
   "Hush app",
 ];

@@ -1,21 +1,30 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import {
   UploadCloud,
   LogOut,
   Trash2,
-  Star,
   Loader2,
   FileUp,
   ExternalLink,
   CheckCircle2,
   Link2,
+  MessageSquare,
+  Mail,
+  Sliders,
+  Send,
+  AlertCircle,
+  Eye,
+  EyeOff,
+  User,
+  Clock,
 } from "lucide-react";
 import HushMark from "@/components/HushMark";
 import { ProviderIcon } from "@/components/ProviderIcon";
 import type { Version } from "@/lib/db";
+import type { AppSettings, ContactInquiry, ChatSession } from "@/lib/store";
 import {
   PROVIDERS,
   type LinkMap,
@@ -24,9 +33,8 @@ import {
 } from "@/lib/providers";
 import { formatBytes, formatDate } from "@/lib/format";
 
-const VERCEL_BODY_LIMIT = 4 * 1024 * 1024; // ~4.5 MB serverless request cap
+const VERCEL_BODY_LIMIT = 4 * 1024 * 1024;
 
-// Safety net so a stalled upload surfaces a clear error instead of spinning.
 function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
   return Promise.race([
     p,
@@ -35,7 +43,7 @@ function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
         () =>
           reject(
             new Error(
-              "Upload timed out. Check your connection and try again — if it keeps failing, confirm Vercel Blob is connected and you're on the production URL."
+              "Upload timed out. Check your connection and try again."
             )
           ),
         ms
@@ -44,11 +52,9 @@ function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
   ]);
 }
 
-// Reads a failed Response into a friendly message, even when the body is plain
-// text/HTML (e.g. a 413 "Request Entity Too Large" from the platform).
 async function readError(r: Response): Promise<string> {
   if (r.status === 413) {
-    return "APK too large for this upload path. Connect Vercel Blob storage (DEPLOY.md → Step 3b) and redeploy — then large uploads work.";
+    return "APK too large for this upload path. Connect Vercel Blob storage and redeploy.";
   }
   const text = await r.text().catch(() => "");
   try {
@@ -59,8 +65,6 @@ async function readError(r: Response): Promise<string> {
   }
 }
 
-// Uploads FormData with real progress events (fetch can't report upload
-// progress; XMLHttpRequest can). Resolves the parsed JSON response.
 function xhrUpload(
   url: string,
   formData: FormData,
@@ -79,12 +83,6 @@ function xhrUpload(
         } catch {
           reject(new Error("Unexpected server response."));
         }
-      } else if (xhr.status === 413) {
-        reject(
-          new Error(
-            "APK too large for this upload path. Connect Vercel Blob storage (DEPLOY.md → Step 3b) and redeploy."
-          )
-        );
       } else {
         let msg = `Upload failed (${xhr.status})`;
         try {
@@ -114,6 +112,10 @@ export default function AdminDashboard({
   const router = useRouter();
   const fileRef = useRef<HTMLInputElement>(null);
 
+  // Active Admin View Tab
+  const [activeTab, setActiveTab] = useState<"releases" | "chats" | "contacts" | "settings">("releases");
+
+  // Releases state
   const [mode, setMode] = useState<"link" | "file">("link");
   const [version, setVersion] = useState("");
   const [changelog, setChangelog] = useState("");
@@ -124,8 +126,158 @@ export default function AdminDashboard({
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
   const [done, setDone] = useState(false);
-  const [progress, setProgress] = useState(0); // 0–100 during upload
+  const [progress, setProgress] = useState(0);
 
+  // Chat Inbox State
+  const [chatSessions, setChatSessions] = useState<ChatSession[]>([]);
+  const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
+  const [adminReplyText, setAdminReplyText] = useState("");
+  const [replying, setReplying] = useState(false);
+
+  // Inquiries State
+  const [contacts, setContacts] = useState<ContactInquiry[]>([]);
+
+  // Settings State
+  const [settings, setSettings] = useState<Partial<AppSettings>>({});
+  const [settingsStatus, setSettingsStatus] = useState("");
+  const [savingSettings, setSavingSettings] = useState(false);
+  const [testEmailTarget, setTestEmailTarget] = useState("");
+  const [testEmailStatus, setTestEmailStatus] = useState("");
+  const [testingEmail, setTestingEmail] = useState(false);
+  const [showApiKey, setShowApiKey] = useState(false);
+
+  // Fetch data on tab change
+  useEffect(() => {
+    if (activeTab === "chats") {
+      fetch("/api/admin/chat")
+        .then((r) => r.json())
+        .then((d) => {
+          if (d.sessions) {
+            setChatSessions(d.sessions);
+            if (d.sessions.length > 0 && !selectedChatId) {
+              setSelectedChatId(d.sessions[0].id);
+            }
+          }
+        })
+        .catch(console.error);
+    } else if (activeTab === "contacts") {
+      fetch("/api/admin/contacts")
+        .then((r) => r.json())
+        .then((d) => {
+          if (d.contacts) setContacts(d.contacts);
+        })
+        .catch(console.error);
+    } else if (activeTab === "settings") {
+      fetch("/api/admin/settings")
+        .then((r) => r.json())
+        .then((d) => {
+          if (d.settings) {
+            setSettings(d.settings);
+            setTestEmailTarget(d.settings.admin_notification_email || "");
+          }
+        })
+        .catch(console.error);
+    }
+  }, [activeTab]);
+
+  // Handle Admin Chat Reply
+  async function handleSendAdminReply(e: React.FormEvent) {
+    e.preventDefault();
+    if (!selectedChatId || !adminReplyText.trim() || replying) return;
+
+    setReplying(true);
+    try {
+      const res = await fetch("/api/admin/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sessionId: selectedChatId,
+          replyText: adminReplyText.trim(),
+        }),
+      });
+
+      const data = await res.json();
+      if (res.ok && data.session) {
+        setChatSessions((prev) =>
+          prev.map((s) => (s.id === selectedChatId ? data.session : s))
+        );
+        setAdminReplyText("");
+      }
+    } catch (err) {
+      console.error("Failed to send admin reply:", err);
+    } finally {
+      setReplying(false);
+    }
+  }
+
+  // Handle Save Settings
+  async function handleSaveSettings(e: React.FormEvent) {
+    e.preventDefault();
+    setSavingSettings(true);
+    setSettingsStatus("");
+
+    try {
+      const res = await fetch("/api/admin/settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(settings),
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to save settings.");
+
+      setSettingsStatus("Settings saved successfully.");
+      setTimeout(() => setSettingsStatus(""), 4000);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setSettingsStatus(`Error: ${msg}`);
+    } finally {
+      setSavingSettings(false);
+    }
+  }
+
+  // Handle Test Email
+  async function handleTestEmail() {
+    if (!testEmailTarget) return;
+    setTestingEmail(true);
+    setTestEmailStatus("");
+
+    try {
+      const res = await fetch("/api/admin/settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ targetEmail: testEmailTarget }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to send test email.");
+
+      setTestEmailStatus("Test email sent successfully! Check your inbox.");
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setTestEmailStatus(`Failed: ${msg}`);
+    } finally {
+      setTestingEmail(false);
+    }
+  }
+
+  // Mark contact as read
+  async function handleMarkContactRead(id: string) {
+    try {
+      await fetch("/api/admin/contacts", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
+      setContacts((prev) =>
+        prev.map((c) => (c.id === id ? { ...c, read: true } : c))
+      );
+    } catch (err) {
+      console.error(err);
+    }
+  }
+
+  // ── Existing Release Management Handlers ──
   async function saveVersion(payload: {
     apk_url: string;
     apk_pathname: string | null;
@@ -157,12 +309,11 @@ export default function AdminDashboard({
 
   async function publish(e: React.FormEvent) {
     e.preventDefault();
-    if (busy) return; // guard against double-submit
+    if (busy) return;
     setError("");
     setDone(false);
     if (!version.trim()) return setError("Enter a version number.");
 
-    // ── Link mode: no upload; store one or more provider links ──
     if (mode === "link") {
       const cleaned: LinkMap = {};
       for (const p of PROVIDERS) {
@@ -170,108 +321,85 @@ export default function AdminDashboard({
         if (v) cleaned[p.key] = v;
       }
       const entries = Object.values(cleaned);
-      if (entries.length === 0) {
-        return setError("Add at least one download link.");
-      }
+      if (entries.length === 0) return setError("Add at least one download link.");
       if (entries.some((u) => !/^https?:\/\/.+\..+/i.test(u))) {
         return setError("Links must start with https:// and point to a file/page.");
       }
       setBusy(true);
       try {
-        await saveVersion({ apk_url: "", apk_pathname: null, size_bytes: 0, links: cleaned });
-      } catch (err) {
-        setError((err as Error).message);
+        await saveVersion({
+          apk_url: entries[0],
+          apk_pathname: null,
+          size_bytes: 0,
+          links: cleaned,
+        });
+      } catch (err: unknown) {
+        setError(err instanceof Error ? err.message : String(err));
       } finally {
         setBusy(false);
       }
       return;
     }
 
-    // ── File mode ──
-    if (!file) return setError("Choose an APK file.");
-
-    // On Vercel, large files can only go through Blob (the serverless request
-    // body is capped and the filesystem is read-only).
-    if (!blobConfigured && onVercel && file.size > VERCEL_BODY_LIMIT) {
-      return setError(
-        "This APK is too large to upload without Vercel Blob. Connect Blob storage (DEPLOY.md → Step 3b) and redeploy, then try again."
-      );
-    }
-
+    if (!file) return setError("Pick an APK file to upload.");
     setBusy(true);
     setProgress(0);
+
     try {
-      let url: string;
-      let pathname: string | null = null;
-      let size = file.size;
-
       if (blobConfigured) {
-        setStatus("Uploading…");
-        const { put } = await import("@vercel/blob/client");
-
-        // Get a scoped upload token from our server (no completion webhook).
-        const safeName = `hush-${
-          version.trim().replace(/[^a-zA-Z0-9._-]/g, "") || "x"
-        }.apk`;
-        const tr = await fetch("/api/admin/blob-token", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ pathname: safeName }),
-        });
-        if (!tr.ok) throw new Error(await readError(tr));
-        const { token, pathname: putPath } = await tr.json();
-
-        const totalBytes = file.size || 1;
-        // The SDK reports cumulative loaded bytes, so this is overall progress.
+        setStatus("Uploading to Vercel Blob…");
+        const { upload } = await import("@vercel/blob/client");
         const blob = await withTimeout(
-          put(putPath, file, {
+          upload(`hush-${version.trim()}.apk`, file, {
             access: "public",
-            token,
-            contentType: "application/vnd.android.package-archive",
-            multipart: file.size > 8 * 1024 * 1024,
-            onUploadProgress: (e) => {
-              const pct = Math.min(99, Math.round((e.loaded / totalBytes) * 100));
-              setProgress((prev) => (pct > prev ? pct : prev));
-            },
+            handleUploadUrl: "/api/admin/blob-token",
+            onUploadProgress: (p) => setProgress(Math.round(p.percentage)),
           }),
-          10 * 60 * 1000
+          15 * 60 * 1000
         );
-        url = blob.url;
-        pathname = blob.pathname;
+        await saveVersion({
+          apk_url: blob.url,
+          apk_pathname: blob.pathname,
+          size_bytes: file.size,
+        });
       } else {
-        setStatus("Uploading…");
-        const fd = new FormData();
-        fd.append("file", file);
-        fd.append("version", version.trim());
-        const j = await xhrUpload("/api/admin/upload-local", fd, setProgress);
-        url = j.url;
-        pathname = j.pathname;
-        size = j.size;
+        if (onVercel && file.size > VERCEL_BODY_LIMIT) {
+          throw new Error(
+            `This APK is ${formatBytes(file.size)}, but local uploads on Vercel are capped at ~4.5 MB.`
+          );
+        }
+        setStatus(
+          file.size > 20 * 1024 * 1024
+            ? "Uploading large APK to local storage…"
+            : "Uploading to local storage…"
+        );
+        const form = new FormData();
+        form.append("file", file);
+        form.append("version", version.trim());
+        const result = await xhrUpload("/api/admin/upload-local", form, setProgress);
+        await saveVersion({
+          apk_url: result.url,
+          apk_pathname: result.pathname,
+          size_bytes: result.size,
+        });
       }
-
-      setProgress(100);
-      await saveVersion({ apk_url: url, apk_pathname: pathname, size_bytes: size });
-    } catch (err) {
-      setError((err as Error).message);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : String(err));
     } finally {
       setBusy(false);
-      setProgress(0);
+      setStatus("");
     }
   }
 
   async function remove(id: number) {
-    if (!confirm("Delete this release? This removes the APK too.")) return;
-    await fetch(`/api/admin/versions/${id}`, { method: "DELETE" });
-    router.refresh();
+    if (!confirm("Delete this release? The APK file will also be removed.")) return;
+    const r = await fetch(`/api/admin/versions/${id}`, { method: "DELETE" });
+    if (r.ok) router.refresh();
   }
 
   async function makeLatest(id: number) {
-    await fetch(`/api/admin/versions/${id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "setLatest" }),
-    });
-    router.refresh();
+    const r = await fetch(`/api/admin/versions/${id}`, { method: "PATCH" });
+    if (r.ok) router.refresh();
   }
 
   async function logout() {
@@ -279,324 +407,710 @@ export default function AdminDashboard({
     router.refresh();
   }
 
+  const selectedChat = chatSessions.find((s) => s.id === selectedChatId);
+
   return (
-    <main className="min-h-screen">
-      <header className="sticky top-0 z-40 border-b border-white/10 bg-black/70 backdrop-blur-xl">
+    <main className="min-h-screen bg-black text-white">
+      {/* Header */}
+      <header className="sticky top-0 z-40 border-b border-white/10 bg-black/80 backdrop-blur-xl">
         <div className="container-page flex items-center justify-between py-4">
-          <div className="flex items-center gap-2.5">
+          <div className="flex items-center gap-3">
             <HushMark size={30} />
-            <span className="font-bold">Hush Admin</span>
+            <div>
+              <span className="font-bold text-sm block">Hush Mission Control</span>
+              <span className="text-[10px] text-white/40 block">
+                Edge Brain Software
+              </span>
+            </div>
           </div>
-          <div className="flex items-center gap-4 text-sm">
-            <span className="hidden text-white/40 sm:inline">@{username}</span>
+
+          {/* Navigation Tabs */}
+          <div className="flex items-center gap-1 rounded-full border border-white/10 bg-white/5 p-1 text-xs">
+            <button
+              onClick={() => setActiveTab("releases")}
+              className={`rounded-full px-3.5 py-1.5 font-medium transition-colors ${
+                activeTab === "releases" ? "bg-white text-black" : "text-white/60 hover:text-white"
+              }`}
+            >
+              Releases &amp; APKs
+            </button>
+            <button
+              onClick={() => setActiveTab("chats")}
+              className={`rounded-full px-3.5 py-1.5 font-medium transition-colors flex items-center gap-1.5 ${
+                activeTab === "chats" ? "bg-white text-black" : "text-white/60 hover:text-white"
+              }`}
+            >
+              <MessageSquare size={13} />
+              <span>Chat Inbox</span>
+              {chatSessions.some((c) => c.status === "escalated") && (
+                <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
+              )}
+            </button>
+            <button
+              onClick={() => setActiveTab("contacts")}
+              className={`rounded-full px-3.5 py-1.5 font-medium transition-colors flex items-center gap-1.5 ${
+                activeTab === "contacts" ? "bg-white text-black" : "text-white/60 hover:text-white"
+              }`}
+            >
+              <Mail size={13} />
+              <span>Inquiries</span>
+              {contacts.some((c) => !c.read) && (
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+              )}
+            </button>
+            <button
+              onClick={() => setActiveTab("settings")}
+              className={`rounded-full px-3.5 py-1.5 font-medium transition-colors flex items-center gap-1.5 ${
+                activeTab === "settings" ? "bg-white text-black" : "text-white/60 hover:text-white"
+              }`}
+            >
+              <Sliders size={13} />
+              <span>AI &amp; SMTP</span>
+            </button>
+          </div>
+
+          <div className="flex items-center gap-4 text-xs">
             <a
-              href="/download"
+              href="/"
               target="_blank"
+              rel="noopener noreferrer"
               className="hidden items-center gap-1.5 text-white/60 hover:text-white sm:inline-flex"
             >
-              View site <ExternalLink size={13} />
+              <span>View Site</span> <ExternalLink size={12} />
             </a>
             <button
               onClick={logout}
-              className="inline-flex items-center gap-1.5 rounded-full border border-white/15 px-3.5 py-1.5 text-white/70 hover:bg-white hover:text-black"
+              className="inline-flex items-center gap-1.5 rounded-full border border-white/15 px-3 py-1.5 text-white/70 hover:bg-white hover:text-black transition-colors"
             >
-              <LogOut size={14} /> Log out
+              <LogOut size={13} /> Log out
             </button>
           </div>
         </div>
       </header>
 
-      <div className="container-page grid grid-cols-1 gap-8 py-10 lg:grid-cols-[380px_1fr]">
-        {/* ── Upload ── */}
-        <form onSubmit={publish} className="card h-fit p-6">
-          <div className="flex items-center gap-2 text-sm font-semibold">
-            <UploadCloud size={18} /> New release
-          </div>
-
-          {/* mode switch */}
-          <div className="mt-5 grid grid-cols-2 gap-1 rounded-xl bg-white/[0.05] p-1">
-            <button
-              type="button"
-              onClick={() => setMode("link")}
-              className={`flex items-center justify-center gap-1.5 rounded-lg py-2 text-xs font-semibold transition-colors ${
-                mode === "link" ? "bg-white text-black" : "text-white/60"
-              }`}
-            >
-              <Link2 size={14} /> Paste link
-            </button>
-            <button
-              type="button"
-              onClick={() => setMode("file")}
-              className={`flex items-center justify-center gap-1.5 rounded-lg py-2 text-xs font-semibold transition-colors ${
-                mode === "file" ? "bg-white text-black" : "text-white/60"
-              }`}
-            >
-              <FileUp size={14} /> Upload file
-            </button>
-          </div>
-
-          {mode === "file" && onVercel && !blobConfigured && (
-            <div className="mt-4 rounded-xl border border-white/25 bg-white/[0.04] p-3.5 text-xs leading-relaxed text-white/70">
-              <b className="text-white">Vercel Blob isn&apos;t connected.</b> Uploads
-              will fail — either add Blob storage, or use <b>Paste link</b> instead.
+      {/* ───────────────────────── TAB 1: RELEASES & APKS ───────────────────────── */}
+      {activeTab === "releases" && (
+        <div className="container-page grid grid-cols-1 gap-8 py-10 lg:grid-cols-[380px_1fr]">
+          <form onSubmit={publish} className="card h-fit p-6">
+            <div className="flex items-center gap-2 text-sm font-semibold text-white">
+              <UploadCloud size={18} /> New release
             </div>
-          )}
 
-          <label className="mt-5 block text-xs uppercase tracking-wider text-white/40">
-            Version
-          </label>
-          <input
-            value={version}
-            onChange={(e) => setVersion(e.target.value)}
-            placeholder="1.0.1"
-            className="mt-2 w-full rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3 font-mono text-sm outline-none focus:border-white/40"
-          />
-
-          <label className="mt-5 block text-xs uppercase tracking-wider text-white/40">
-            Changelog / improvements
-          </label>
-          <textarea
-            value={changelog}
-            onChange={(e) => setChangelog(e.target.value)}
-            placeholder={"One item per line, e.g.\nFixed message ordering\nNew app icon"}
-            rows={5}
-            className="mt-2 w-full resize-y rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3 text-sm leading-relaxed outline-none focus:border-white/40"
-          />
-
-          {mode === "link" ? (
-            <>
-              <label className="mt-5 block text-xs uppercase tracking-wider text-white/40">
-                Download links
-              </label>
-              <p className="mb-3 mt-1 text-[11px] leading-relaxed text-white/35">
-                Fill any you like — visitors see one icon per link and pick a source.
-              </p>
-              <div className="space-y-2.5">
-                {PROVIDERS.map((p) => (
-                  <div
-                    key={p.key}
-                    className="flex items-center gap-2.5 rounded-xl border border-white/10 bg-white/[0.03] px-3 focus-within:border-white/40"
-                  >
-                    <span className="text-white/70">
-                      <ProviderIcon provider={p.key} size={18} />
-                    </span>
-                    <input
-                      value={links[p.key] ?? ""}
-                      onChange={(e) =>
-                        setLinks((prev) => ({
-                          ...prev,
-                          [p.key as ProviderKey]: e.target.value,
-                        }))
-                      }
-                      placeholder={p.name}
-                      className="w-full bg-transparent py-2.5 text-sm outline-none placeholder:text-white/30"
-                    />
-                  </div>
-                ))}
-              </div>
-              <p className="mt-2.5 text-[11px] leading-relaxed text-white/35">
-                Tip: on GitHub → <b>Releases → Draft a new release</b> → drag the
-                APK in → Publish → right-click the file → <b>Copy link</b>.
-              </p>
-            </>
-          ) : (
-            <>
-              <label className="mt-5 block text-xs uppercase tracking-wider text-white/40">
-                APK file
-              </label>
+            <div className="mt-5 grid grid-cols-2 gap-1 rounded-xl bg-white/[0.05] p-1">
               <button
                 type="button"
-                onClick={() => fileRef.current?.click()}
-                className="mt-2 flex w-full items-center gap-3 rounded-xl border border-dashed border-white/20 px-4 py-4 text-left text-sm transition-colors hover:border-white/50"
+                onClick={() => setMode("link")}
+                className={`flex items-center justify-center gap-1.5 rounded-lg py-2 text-xs font-semibold transition-colors ${
+                  mode === "link" ? "bg-white text-black" : "text-white/60"
+                }`}
               >
-                <FileUp size={18} className="text-white/50" />
-                {file ? (
-                  <span className="min-w-0">
-                    <span className="block truncate font-medium">{file.name}</span>
-                    <span className="text-xs text-white/40">
-                      {formatBytes(file.size)}
-                    </span>
-                  </span>
-                ) : (
-                  <span className="text-white/40">Choose .apk…</span>
-                )}
+                <Link2 size={14} /> Paste link
               </button>
-              <input
-                ref={fileRef}
-                type="file"
-                accept=".apk,application/vnd.android.package-archive"
-                className="hidden"
-                onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-              />
-            </>
-          )}
-
-          <label className="mt-5 block text-xs uppercase tracking-wider text-white/40">
-            How it shows to visitors
-          </label>
-          <div className="mt-2 grid grid-cols-2 gap-1 rounded-xl bg-white/[0.05] p-1">
-            <button
-              type="button"
-              onClick={() => setDisplay("icons")}
-              className={`rounded-lg py-2 text-xs font-semibold transition-colors ${
-                display === "icons" ? "bg-white text-black" : "text-white/60"
-              }`}
-            >
-              Source icons
-            </button>
-            <button
-              type="button"
-              onClick={() => setDisplay("buttons")}
-              className={`rounded-lg py-2 text-xs font-semibold transition-colors ${
-                display === "buttons" ? "bg-white text-black" : "text-white/60"
-              }`}
-            >
-              Download button
-            </button>
-          </div>
-          <p className="mt-1.5 text-[11px] text-white/35">
-            {display === "icons"
-              ? "Visitors see a provider icon for each link."
-              : "Visitors see a plain “Download” button (named buttons if you add multiple links)."}
-          </p>
-
-          {error && <p className="mt-4 text-sm text-white/80">⚠ {error}</p>}
-          {done && !error && (
-            <p className="mt-4 flex items-center gap-1.5 text-sm text-white/70">
-              <CheckCircle2 size={15} /> Release published.
-            </p>
-          )}
-
-          {busy && mode === "file" && (
-            <div className="mt-5">
-              <div className="mb-1.5 flex items-center justify-between text-xs text-white/60">
-                <span>
-                  {progress > 0 && progress < 100
-                    ? "Uploading…"
-                    : status || "Working…"}
-                </span>
-                {progress > 0 && progress < 100 && (
-                  <span className="font-mono text-white/80">{progress}%</span>
-                )}
-              </div>
-              <div className="h-2 w-full overflow-hidden rounded-full bg-white/10">
-                <div
-                  className={`h-full rounded-full bg-white transition-[width] duration-200 ease-out ${
-                    progress === 0 ? "animate-pulse w-1/3" : ""
-                  }`}
-                  style={progress > 0 ? { width: `${progress}%` } : undefined}
-                />
-              </div>
-              <p className="mt-1.5 text-[11px] text-white/35">
-                {progress >= 100
-                  ? "Finalizing…"
-                  : "Large APKs can take a while on slower connections — keep this tab open."}
-              </p>
+              <button
+                type="button"
+                onClick={() => setMode("file")}
+                className={`flex items-center justify-center gap-1.5 rounded-lg py-2 text-xs font-semibold transition-colors ${
+                  mode === "file" ? "bg-white text-black" : "text-white/60"
+                }`}
+              >
+                <FileUp size={14} /> Upload file
+              </button>
             </div>
-          )}
 
-          <button
-            type="submit"
-            disabled={busy}
-            className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl bg-white py-3.5 text-sm font-bold text-black transition-transform hover:scale-[1.01] active:scale-[0.99] disabled:opacity-60"
-          >
-            {busy ? (
+            <label className="mt-5 block text-xs uppercase tracking-wider text-white/40">
+              Version
+            </label>
+            <input
+              value={version}
+              onChange={(e) => setVersion(e.target.value)}
+              placeholder="1.0.1"
+              className="mt-2 w-full rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3 font-mono text-sm text-white outline-none focus:border-white/40"
+            />
+
+            <label className="mt-5 block text-xs uppercase tracking-wider text-white/40">
+              Changelog / improvements
+            </label>
+            <textarea
+              value={changelog}
+              onChange={(e) => setChangelog(e.target.value)}
+              rows={4}
+              placeholder="What changed in this build?"
+              className="mt-2 w-full rounded-xl border border-white/10 bg-white/[0.03] p-4 text-xs text-white outline-none focus:border-white/40 resize-none"
+            />
+
+            {mode === "file" ? (
               <>
-                <Loader2 size={16} className="animate-spin" />
-                {progress > 0 && progress < 100
-                  ? `Uploading ${progress}%`
-                  : status || "Working…"}
+                <label className="mt-5 block text-xs uppercase tracking-wider text-white/40">
+                  APK file
+                </label>
+                <input
+                  ref={fileRef}
+                  type="file"
+                  accept=".apk"
+                  onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+                  className="mt-2 w-full text-xs text-white/70"
+                />
               </>
             ) : (
-              "Publish release"
+              <div className="mt-5 space-y-3">
+                <label className="block text-xs uppercase tracking-wider text-white/40">
+                  Direct Download URL
+                </label>
+                <input
+                  value={links["github"] || ""}
+                  onChange={(e) => setLinks({ ...links, github: e.target.value })}
+                  placeholder="https://.../hush.apk"
+                  className="w-full rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3 text-xs text-white outline-none focus:border-white/40"
+                />
+              </div>
             )}
-          </button>
 
-          {mode === "file" && (
-            <p className="mt-3 text-center text-[11px] text-white/30">
-              {blobConfigured
-                ? "Storage: Vercel Blob"
-                : "Storage: local /public/uploads (dev)"}
-            </p>
-          )}
-        </form>
+            {error && (
+              <div className="mt-4 flex items-center gap-2 text-xs text-rose-300">
+                <AlertCircle size={14} className="shrink-0" />
+                <span>{error}</span>
+              </div>
+            )}
+            {done && (
+              <div className="mt-4 flex items-center gap-2 text-xs text-emerald-400">
+                <CheckCircle2 size={14} /> Release published successfully!
+              </div>
+            )}
 
-        {/* ── Releases ── */}
-        <section>
-          <div className="mb-4 flex items-center justify-between">
-            <h2 className="text-lg font-bold">Releases</h2>
-            <span className="text-sm text-white/40">{versions.length} total</span>
-          </div>
+            <button
+              type="submit"
+              disabled={busy}
+              className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl bg-white py-3 text-xs font-bold text-black transition-transform hover:scale-[1.01] disabled:opacity-50"
+            >
+              {busy ? (
+                <>
+                  <Loader2 size={14} className="animate-spin" />
+                  <span>{status || "Publishing…"}</span>
+                </>
+              ) : (
+                <span>Publish Release</span>
+              )}
+            </button>
+          </form>
 
-          {versions.length === 0 ? (
-            <div className="card p-10 text-center text-white/40">
-              No releases yet. Publish your first one on the left.
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {versions.map((v) => (
-                <div key={v.id} className="card p-5">
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div className="flex items-center gap-3">
-                      <span className="font-mono text-base font-bold">
-                        v{v.version}
-                      </span>
-                      {v.is_latest && (
-                        <span className="rounded-full bg-white px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-black">
-                          Latest
-                        </span>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {!v.is_latest && (
-                        <button
-                          onClick={() => makeLatest(v.id)}
-                          title="Set as latest"
-                          className="inline-flex items-center gap-1.5 rounded-full border border-white/15 px-3 py-1.5 text-xs hover:bg-white hover:text-black"
-                        >
-                          <Star size={13} /> Set latest
-                        </button>
-                      )}
-                      <a
-                        href={`/api/download/${v.id}`}
-                        className="rounded-full border border-white/15 px-3 py-1.5 text-xs hover:bg-white hover:text-black"
-                      >
-                        APK
-                      </a>
-                      <button
-                        onClick={() => remove(v.id)}
-                        title="Delete"
-                        className="inline-flex items-center rounded-full border border-white/15 p-1.5 text-white/60 hover:border-white hover:text-white"
-                      >
-                        <Trash2 size={14} />
-                      </button>
-                    </div>
-                  </div>
-                  <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-white/40">
-                    <span>{formatDate(v.created_at)}</span>
-                    {v.size_bytes > 0 && <span>{formatBytes(v.size_bytes)}</span>}
-                    <span>{v.downloads.toLocaleString()} downloads</span>
-                    {PROVIDERS.filter((p) => v.links?.[p.key]).length > 0 && (
-                      <span className="flex items-center gap-2 text-white/60">
-                        {PROVIDERS.filter((p) => v.links?.[p.key]).map((p) => (
-                          <span key={p.key} title={p.name}>
-                            <ProviderIcon provider={p.key} size={13} />
-                          </span>
-                        ))}
+          {/* Versions List */}
+          <div className="space-y-4">
+            <h2 className="text-base font-bold text-white">Active Releases ({versions.length})</h2>
+            {versions.map((v) => (
+              <div key={v.id} className="card p-5 flex items-center justify-between">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono font-bold text-sm text-white">v{v.version}</span>
+                    {v.is_latest && (
+                      <span className="rounded-full bg-emerald-500/10 border border-emerald-500/30 px-2 py-0.5 text-[10px] text-emerald-400 font-semibold">
+                        Latest
                       </span>
                     )}
                   </div>
-                  {v.changelog?.trim() && (
-                    <p className="mt-3 whitespace-pre-line border-t border-white/10 pt-3 text-sm text-white/60">
-                      {v.changelog}
+                  <p className="text-xs text-white/40 mt-1">
+                    {formatDate(v.created_at)} · {v.downloads} downloads
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  {!v.is_latest && (
+                    <button
+                      onClick={() => makeLatest(v.id)}
+                      className="rounded-lg border border-white/10 px-3 py-1.5 text-xs text-white/60 hover:text-white hover:bg-white/5"
+                    >
+                      Set Latest
+                    </button>
+                  )}
+                  <button
+                    onClick={() => remove(v.id)}
+                    className="p-1.5 text-white/40 hover:text-rose-400 transition-colors"
+                    title="Delete release"
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ───────────────────────── TAB 2: CHAT INBOX ───────────────────────── */}
+      {activeTab === "chats" && (
+        <div className="container-page py-10">
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-12 min-h-[580px]">
+            {/* Thread List */}
+            <div className="lg:col-span-4 rounded-2xl border border-white/10 bg-white/[0.02] p-4 space-y-3 overflow-y-auto max-h-[620px]">
+              <div className="flex items-center justify-between pb-2 border-b border-white/10">
+                <span className="text-xs font-bold uppercase tracking-wider text-white">
+                  Visitor Threads ({chatSessions.length})
+                </span>
+                <button
+                  onClick={() => {
+                    fetch("/api/admin/chat")
+                      .then((r) => r.json())
+                      .then((d) => d.sessions && setChatSessions(d.sessions));
+                  }}
+                  className="text-[11px] text-white/40 hover:text-white"
+                >
+                  Refresh
+                </button>
+              </div>
+
+              {chatSessions.length === 0 ? (
+                <p className="text-xs text-white/40 py-8 text-center">
+                  No visitor chat sessions logged yet.
+                </p>
+              ) : (
+                chatSessions.map((session) => {
+                  const isSelected = session.id === selectedChatId;
+                  const lastMsg = session.messages[session.messages.length - 1];
+                  return (
+                    <div
+                      key={session.id}
+                      onClick={() => setSelectedChatId(session.id)}
+                      className={`cursor-pointer rounded-xl p-3.5 transition-colors border ${
+                        isSelected
+                          ? "border-white bg-white/10"
+                          : "border-white/5 bg-white/[0.02] hover:bg-white/5"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="font-semibold text-xs text-white">
+                          {session.visitor_name}
+                        </span>
+                        {session.status === "escalated" ? (
+                          <span className="rounded-full bg-amber-500/20 px-2 py-0.5 text-[9px] font-mono text-amber-300">
+                            Escalated
+                          </span>
+                        ) : (
+                          <span className="text-[10px] text-white/40">
+                            {formatDate(session.updated_at)}
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-[11px] text-white/50 truncate mt-1">
+                        {session.visitor_email}
+                      </div>
+                      {lastMsg && (
+                        <p className="text-xs text-white/70 truncate mt-1.5 italic">
+                          &quot;{lastMsg.text}&quot;
+                        </p>
+                      )}
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+            {/* Conversation Viewer */}
+            <div className="lg:col-span-8 rounded-2xl border border-white/10 bg-white/[0.02] flex flex-col justify-between overflow-hidden">
+              {selectedChat ? (
+                <>
+                  {/* Chat header */}
+                  <div className="border-b border-white/10 p-4 flex items-center justify-between bg-white/[0.01]">
+                    <div>
+                      <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                        <span>{selectedChat.visitor_name}</span>
+                        <span className="text-xs text-white/40 font-normal">
+                          ({selectedChat.visitor_email})
+                        </span>
+                      </h3>
+                      <span className="text-[10px] text-white/40 font-mono">
+                        Session: {selectedChat.id}
+                      </span>
+                    </div>
+                    {selectedChat.status === "escalated" && (
+                      <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-3 py-1 text-xs text-amber-300">
+                        Human Follow-up Required
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Message stream */}
+                  <div className="flex-1 overflow-y-auto p-5 space-y-3.5 max-h-[440px]">
+                    {selectedChat.messages.map((m) => {
+                      const isVisitor = m.sender === "visitor";
+                      const isAdmin = m.sender === "admin";
+                      return (
+                        <div
+                          key={m.id}
+                          className={`flex flex-col ${
+                            isVisitor ? "items-start" : "items-end"
+                          }`}
+                        >
+                          <span className="text-[10px] text-white/40 mb-1 px-1">
+                            {isVisitor
+                              ? selectedChat.visitor_name
+                              : isAdmin
+                              ? "Admin Reply"
+                              : "Hush AI Assistant"}
+                          </span>
+                          <div
+                            className={`max-w-[80%] rounded-2xl px-4 py-2.5 text-xs leading-relaxed ${
+                              isVisitor
+                                ? "border border-white/10 bg-white/5 text-white"
+                                : isAdmin
+                                ? "bg-white text-black font-medium"
+                                : "border border-white/15 bg-white/[0.02] text-white/90"
+                            }`}
+                          >
+                            <p className="whitespace-pre-wrap">{m.text}</p>
+                          </div>
+                          {m.escalated && (
+                            <span className="mt-1 text-[10px] text-amber-300">
+                              Escalation token triggered
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Admin Reply form */}
+                  <form
+                    onSubmit={handleSendAdminReply}
+                    className="border-t border-white/10 p-4 bg-white/[0.02] flex items-center gap-3"
+                  >
+                    <input
+                      type="text"
+                      placeholder={`Reply directly to ${selectedChat.visitor_name}...`}
+                      value={adminReplyText}
+                      onChange={(e) => setAdminReplyText(e.target.value)}
+                      disabled={replying}
+                      className="flex-1 rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-xs text-white placeholder-white/30 focus:border-white focus:outline-none"
+                    />
+                    <button
+                      type="submit"
+                      disabled={!adminReplyText.trim() || replying}
+                      className="flex items-center gap-1.5 rounded-xl bg-white px-5 py-3 text-xs font-bold text-black transition-transform hover:scale-105 disabled:opacity-40"
+                    >
+                      {replying ? (
+                        <Loader2 size={13} className="animate-spin" />
+                      ) : (
+                        <Send size={13} />
+                      )}
+                      <span>Send Reply</span>
+                    </button>
+                  </form>
+                </>
+              ) : (
+                <div className="flex flex-1 items-center justify-center p-12 text-center text-xs text-white/40">
+                  Select a visitor chat from the left panel to review message history and reply.
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ───────────────────────── TAB 3: CONTACT INQUIRIES ───────────────────────── */}
+      {activeTab === "contacts" && (
+        <div className="container-page py-10 space-y-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-xl font-bold text-white">Project Inquiries &amp; Leads</h2>
+              <p className="text-xs text-white/50">
+                Inquiries submitted via the /contact page for custom privacy &amp; app development.
+              </p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 gap-4">
+            {contacts.length === 0 ? (
+              <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-12 text-center text-xs text-white/40">
+                No contact inquiries received yet.
+              </div>
+            ) : (
+              contacts.map((c) => (
+                <div
+                  key={c.id}
+                  className={`rounded-2xl border p-6 transition-colors ${
+                    c.read
+                      ? "border-white/10 bg-white/[0.01]"
+                      : "border-white/25 bg-white/[0.03]"
+                  }`}
+                >
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-white/10 pb-4">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h3 className="text-base font-bold text-white">{c.name}</h3>
+                        {!c.read && (
+                          <span className="rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 text-[9px] font-mono">
+                            New Lead
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-xs text-white/60 mt-0.5">
+                        <a href={`mailto:${c.email}`} className="text-white underline">
+                          {c.email}
+                        </a>
+                        {c.company && <span> · {c.company}</span>}
+                      </div>
+                    </div>
+                    <div className="text-right text-xs text-white/40">
+                      <div>{formatDate(c.created_at)}</div>
+                      <div className="font-mono text-emerald-400 mt-1">{c.budget}</div>
+                    </div>
+                  </div>
+
+                  <div className="py-4">
+                    <span className="text-[10px] font-mono uppercase tracking-widest text-white/40 block">
+                      Scope: {c.project_type}
+                    </span>
+                    <p className="mt-2 text-xs text-white/80 leading-relaxed whitespace-pre-wrap">
+                      {c.message}
                     </p>
+                  </div>
+
+                  {!c.read && (
+                    <div className="pt-2 border-t border-white/5 flex justify-end">
+                      <button
+                        onClick={() => handleMarkContactRead(c.id)}
+                        className="rounded-lg border border-white/10 px-3 py-1.5 text-xs text-white/60 hover:text-white hover:bg-white/5 transition-colors"
+                      >
+                        Mark as Reviewed
+                      </button>
+                    </div>
                   )}
                 </div>
-              ))}
+              ))
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ───────────────────────── TAB 4: AI & SMTP SETTINGS ───────────────────────── */}
+      {activeTab === "settings" && (
+        <div className="container-page max-w-4xl py-10">
+          <form onSubmit={handleSaveSettings} className="space-y-8">
+            {/* Groq AI Settings */}
+            <div className="rounded-2xl border border-white/15 bg-white/[0.02] p-6 sm:p-8 space-y-6">
+              <div>
+                <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                  <Sliders size={18} />
+                  <span>Groq AI Assistant Configuration</span>
+                </h3>
+                <p className="mt-1 text-xs text-white/50">
+                  Provide your Groq API key to power real-time AI responses in the website chat.
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-xs uppercase tracking-wider text-white/60 font-medium">
+                  Groq API Key
+                </label>
+                <div className="relative mt-2">
+                  <input
+                    type={showApiKey ? "text" : "password"}
+                    value={settings.groq_api_key ?? ""}
+                    onChange={(e) => setSettings({ ...settings, groq_api_key: e.target.value })}
+                    placeholder="gsk_..."
+                    className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 font-mono text-xs text-white placeholder-white/30 outline-none focus:border-white"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowApiKey(!showApiKey)}
+                    className="absolute right-4 top-1/2 -translate-y-1/2 text-white/40 hover:text-white"
+                  >
+                    {showApiKey ? <EyeOff size={14} /> : <Eye size={14} />}
+                  </button>
+                </div>
+                <p className="mt-1.5 text-[11px] text-white/40">
+                  Keys are stored securely on the server and never exposed to website visitors.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div>
+                  <label className="block text-xs uppercase tracking-wider text-white/60 font-medium">
+                    Model
+                  </label>
+                  <select
+                    value={settings.groq_model || "llama-3.3-70b-versatile"}
+                    onChange={(e) => setSettings({ ...settings, groq_model: e.target.value })}
+                    className="mt-2 w-full rounded-xl border border-white/10 bg-neutral-900 px-4 py-2.5 text-xs text-white outline-none focus:border-white"
+                  >
+                    <option value="llama-3.3-70b-versatile">llama-3.3-70b-versatile (Recommended)</option>
+                    <option value="llama-3.1-8b-instant">llama-3.1-8b-instant (Fastest)</option>
+                    <option value="mixtral-8x7b-32768">mixtral-8x7b-32768</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs uppercase tracking-wider text-white/60 font-medium">
+                    Escalation Alert Email
+                  </label>
+                  <input
+                    type="email"
+                    value={settings.admin_notification_email ?? ""}
+                    onChange={(e) => setSettings({ ...settings, admin_notification_email: e.target.value })}
+                    placeholder="founder@edgebrainsoftware.com"
+                    className="mt-2 w-full rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-xs text-white placeholder-white/30 outline-none focus:border-white"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs uppercase tracking-wider text-white/60 font-medium">
+                  AI System Instructions &amp; Security Guardrails
+                </label>
+                <textarea
+                  rows={6}
+                  value={settings.ai_system_instructions ?? ""}
+                  onChange={(e) => setSettings({ ...settings, ai_system_instructions: e.target.value })}
+                  placeholder="Instructions for how the AI should represent Hush..."
+                  className="mt-2 w-full rounded-xl border border-white/10 bg-white/5 p-4 text-xs font-mono text-white/80 placeholder-white/30 outline-none focus:border-white resize-y"
+                />
+                <p className="mt-1.5 text-[11px] text-white/40">
+                  Tip: Include &quot;Our team will be in touch with you shortly at &#123;visitor_email&#125;&quot; and [ESCALATE] to trigger automated email routing when questions are out of scope.
+                </p>
+              </div>
             </div>
-          )}
-        </section>
-      </div>
+
+            {/* Custom Domain SMTP Settings */}
+            <div className="rounded-2xl border border-white/15 bg-white/[0.02] p-6 sm:p-8 space-y-6">
+              <div>
+                <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                  <Mail size={18} />
+                  <span>Custom Domain SMTP Server Configuration</span>
+                </h3>
+                <p className="mt-1 text-xs text-white/50">
+                  Configure your domain SMTP credentials to receive lead notifications and escalated chat emails.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                <div className="sm:col-span-2">
+                  <label className="block text-xs uppercase tracking-wider text-white/60 font-medium">
+                    SMTP Host
+                  </label>
+                  <input
+                    type="text"
+                    value={settings.smtp_host ?? ""}
+                    onChange={(e) => setSettings({ ...settings, smtp_host: e.target.value })}
+                    placeholder="smtp.edgebrainsoftware.com"
+                    className="mt-2 w-full rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-xs text-white placeholder-white/30 outline-none focus:border-white"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs uppercase tracking-wider text-white/60 font-medium">
+                    SMTP Port
+                  </label>
+                  <input
+                    type="number"
+                    value={settings.smtp_port ?? 587}
+                    onChange={(e) => setSettings({ ...settings, smtp_port: Number(e.target.value) })}
+                    placeholder="587"
+                    className="mt-2 w-full rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-xs text-white placeholder-white/30 outline-none focus:border-white"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div>
+                  <label className="block text-xs uppercase tracking-wider text-white/60 font-medium">
+                    SMTP Username / Email
+                  </label>
+                  <input
+                    type="text"
+                    value={settings.smtp_user ?? ""}
+                    onChange={(e) => setSettings({ ...settings, smtp_user: e.target.value })}
+                    placeholder="support@edgebrainsoftware.com"
+                    className="mt-2 w-full rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-xs text-white placeholder-white/30 outline-none focus:border-white"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs uppercase tracking-wider text-white/60 font-medium">
+                    SMTP Password
+                  </label>
+                  <input
+                    type="password"
+                    value={settings.smtp_pass ?? ""}
+                    onChange={(e) => setSettings({ ...settings, smtp_pass: e.target.value })}
+                    placeholder="••••••••"
+                    className="mt-2 w-full rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-xs text-white placeholder-white/30 outline-none focus:border-white"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div>
+                  <label className="block text-xs uppercase tracking-wider text-white/60 font-medium">
+                    From Header
+                  </label>
+                  <input
+                    type="text"
+                    value={settings.smtp_from ?? ""}
+                    onChange={(e) => setSettings({ ...settings, smtp_from: e.target.value })}
+                    placeholder="Hush Support <support@edgebrainsoftware.com>"
+                    className="mt-2 w-full rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-xs text-white placeholder-white/30 outline-none focus:border-white"
+                  />
+                </div>
+
+                <div className="flex items-center gap-3 pt-6">
+                  <input
+                    type="checkbox"
+                    id="smtp_sec"
+                    checked={Boolean(settings.smtp_secure)}
+                    onChange={(e) => setSettings({ ...settings, smtp_secure: e.target.checked })}
+                    className="h-4 w-4 rounded border-white/20 bg-white/5"
+                  />
+                  <label htmlFor="smtp_sec" className="text-xs text-white/80 cursor-pointer">
+                    Enable SSL / TLS (Default port 465)
+                  </label>
+                </div>
+              </div>
+
+              {/* Test Email Section */}
+              <div className="pt-4 border-t border-white/10 flex flex-col sm:flex-row items-center gap-3">
+                <input
+                  type="email"
+                  value={testEmailTarget}
+                  onChange={(e) => setTestEmailTarget(e.target.value)}
+                  placeholder="Recipient address for test email"
+                  className="flex-1 w-full rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-xs text-white placeholder-white/30 outline-none focus:border-white"
+                />
+                <button
+                  type="button"
+                  onClick={handleTestEmail}
+                  disabled={testingEmail || !testEmailTarget}
+                  className="rounded-xl border border-white/20 bg-white/5 px-4 py-2.5 text-xs font-semibold text-white hover:bg-white/10 disabled:opacity-40 transition-colors shrink-0"
+                >
+                  {testingEmail ? "Sending..." : "Send Test Email"}
+                </button>
+              </div>
+              {testEmailStatus && (
+                <p className="text-xs font-mono text-emerald-400">{testEmailStatus}</p>
+              )}
+            </div>
+
+            {/* Save Button & Feedback */}
+            <div className="flex items-center justify-between">
+              <div>
+                {settingsStatus && (
+                  <p className="text-xs font-mono text-emerald-400">{settingsStatus}</p>
+                )}
+              </div>
+              <button
+                type="submit"
+                disabled={savingSettings}
+                className="flex items-center gap-2 rounded-xl bg-white px-6 py-3 text-xs font-bold text-black transition-transform hover:scale-105 disabled:opacity-50"
+              >
+                {savingSettings ? (
+                  <>
+                    <Loader2 size={14} className="animate-spin" />
+                    <span>Saving...</span>
+                  </>
+                ) : (
+                  <span>Save All Settings</span>
+                )}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
     </main>
   );
 }

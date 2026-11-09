@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
+import FloatingChat from "@/components/FloatingChat";
 import {
   SITE_URL,
   SITE_NAME,
@@ -21,11 +22,18 @@ export const metadata: Metadata = {
   description: SITE_DESCRIPTION,
   applicationName: SITE_NAME,
   keywords: SITE_KEYWORDS,
-  authors: [{ name: "farixdev", url: "https://github.com/farixdev" }],
-  creator: "farixdev",
+  authors: [{ name: "Edge Brain Software", url: "https://www.edgebrainsoftware.com" }],
+  creator: "Edge Brain Software",
   publisher: SITE_NAME,
   category: "communication",
   alternates: { canonical: "/" },
+  icons: {
+    icon: [
+      { url: "/icon.png", type: "image/png" },
+      { url: "/hush-icon.png", type: "image/png" },
+    ],
+    apple: [{ url: "/hush-icon.png", type: "image/png" }],
+  },
   robots: {
     index: true,
     follow: true,
@@ -42,22 +50,23 @@ export const metadata: Metadata = {
     siteName: SITE_NAME,
     url: SITE_URL,
     title: SITE_TITLE,
-    description:
-      "Anonymous, end-to-end encrypted chat and voice calls for Android. No accounts, no trace — get a code, talk, and it's gone. Works nearby with no internet.",
+    description: SITE_DESCRIPTION,
     locale: "en_US",
-    images: [{ url: "/hush-mask.png", alt: "Hush — anonymous, encrypted chat" }],
+    images: [{ url: "/hush-mask.png", alt: "Hush — anonymous, encrypted chat & voice calls" }],
   },
   twitter: {
     card: "summary_large_image",
     title: SITE_TITLE,
-    description:
-      "Anonymous, end-to-end encrypted chat and voice calls for Android. No accounts, no trace. Works nearby with no internet.",
+    description: SITE_DESCRIPTION,
     images: ["/hush-mask.png"],
   },
 };
 
 export const viewport: Viewport = {
   themeColor: "#000000",
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 5,
 };
 
 const jsonLd = {
@@ -84,9 +93,9 @@ const jsonLd = {
     priceCurrency: "USD",
   },
   author: {
-    "@type": "Person",
-    name: "farixdev",
-    url: "https://github.com/farixdev",
+    "@type": "Organization",
+    name: "Edge Brain Software",
+    url: "https://www.edgebrainsoftware.com",
   },
 };
 
@@ -97,12 +106,21 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className={`${inter.variable} ${mono.variable}`}>
-      <body className="min-h-screen bg-black font-sans text-white antialiased">
+      <body className="min-h-screen bg-black font-sans text-white antialiased selection:bg-white selection:text-black">
+        {/* Accessible skip to main content */}
+        <a
+          href="#main-content"
+          className="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-[100] focus:rounded-full focus:bg-white focus:px-4 focus:py-2 focus:text-xs focus:font-bold focus:text-black focus:outline-none focus:ring-2 focus:ring-white"
+        >
+          Skip to main content
+        </a>
+
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
         />
         {children}
+        <FloatingChat />
       </body>
     </html>
   );

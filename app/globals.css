@@ -9,10 +9,13 @@
 
 * {
   -webkit-tap-highlight-color: transparent;
+  box-sizing: border-box;
 }
 
 html {
   scroll-behavior: smooth;
+  min-width: 320px;
+  max-width: 100%;
 }
 
 body {
@@ -20,7 +23,18 @@ body {
   color: var(--fg);
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
+  min-width: 320px;
+  max-width: 100%;
   overflow-x: hidden;
+}
+
+/* Ensure images and media never exceed containers */
+img,
+video,
+canvas,
+svg {
+  max-width: 100%;
+  height: auto;
 }
 
 ::selection {
@@ -28,31 +42,38 @@ body {
   color: #000000;
 }
 
-/* thin monochrome scrollbar */
+/* Visible focus indicators for keyboard accessibility */
+:focus-visible {
+  outline: 2px solid #ffffff;
+  outline-offset: 3px;
+  border-radius: 6px;
+}
+
+/* Thin monochrome scrollbar */
 ::-webkit-scrollbar {
-  width: 9px;
-  height: 9px;
+  width: 8px;
+  height: 8px;
 }
 ::-webkit-scrollbar-track {
   background: #000;
 }
 ::-webkit-scrollbar-thumb {
-  background: #222;
+  background: #262626;
   border-radius: 999px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #333;
+  background: #404040;
 }
 
 @layer components {
   .container-page {
-    @apply mx-auto w-full max-w-6xl px-6;
+    @apply mx-auto w-full max-w-6xl px-4 sm:px-6;
   }
   .hairline {
     @apply border-white/10;
   }
   .eyebrow {
-    @apply text-[11px] uppercase tracking-[0.28em] text-white/40 font-medium;
+    @apply text-[11px] uppercase tracking-[0.28em] text-white/50 font-medium;
   }
   .card {
     @apply rounded-2xl border border-white/10 bg-white/[0.02] backdrop-blur-sm;
@@ -80,6 +101,7 @@ body {
   color: transparent;
   animation: shine 4s linear infinite;
 }
+
 @keyframes shine {
   to {
     background-position: 200% center;

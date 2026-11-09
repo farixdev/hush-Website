@@ -27,7 +27,7 @@ export default function BlurText({
       viewport={{ once: true, margin: "-10%" }}
       transition={{ staggerChildren: 0.06, delayChildren: delay }}
       variants={{ hidden: {}, show: {} }}
-      style={{ display: "inline-block" }}
+      style={{ display: className?.includes("block") ? "block" : "inline-block" }}
     >
       {words.map((word, i) => (
         <motion.span
